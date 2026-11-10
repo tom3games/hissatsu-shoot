@@ -54,7 +54,10 @@
         close: '閉じる', loading: '芝を刈っています', hashtag: '必殺シュートを描け',
         tut1: 'ボールから上へなぞって', tut2: '札を押すと通り道が見える', tut3: 'もう一度押すか「蹴る」',
         muriWarn: 'この線は物理的に無理', costHeavy: '足に重い',
-        live: { one: ['最初は好きにどうぞ', 'キーパー、あくびしてる'], wall: ['壁、ちょっと前に出てる', '壁の人、目を閉じてる'], box: ['相手が戻ってきた', 'ゴール前、渋滞中'], angle: ['角度、ほぼゼロ', 'ほぼ真横から'], long: ['ここから撃つの？', '遠い。とても遠い'], tall: ['でかいのがいる', '3mの人がいる'], sleep: ['芝の上で昼寝中', '一人、寝てる'] },
+        hit: { tower: ['崩れるー！', 'だから3段は無理って', '労災です'], kata: ['前が見えない！', 'いま何が当たった！？', '上の人のせいです'], mound: ['ぼくの山が！', '砂に埋まった', '3時間かかったのに'], squat: ['いま作ってるの！', '工事中です'], pyr: ['重い…', 'ぺしゃんこ', '運動会どうすんの'] },
+        ono: { big: 'ドゴォッ', mid: 'ズドン', small: 'ぽすっ', net: 'バサァッ', tower: 'ガラガラ', kata: 'ドテッ', mound: 'ザバァ', pyr: 'グシャッ', squat: 'ポコッ', near: 'ひぃっ' }, sign: '工事中',
+        live: { tower: ['人間タワー、建設完了', 'てっぺんの人、足がふるえてる'], kata: ['肩車の壁。下の人、前が見えてない', '肩車で背を盛ってきた'], sand: ['ゴール前で砂山を作ってる人がいる', '砂場、ただいま工事中'], pyr: ['組体操のピラミッドで守ってる', '運動会の練習中らしい'],
+          one: ['最初は好きにどうぞ', 'キーパー、あくびしてる'], wall: ['壁、ちょっと前に出てる', '壁の人、目を閉じてる'], box: ['相手が戻ってきた', 'ゴール前、渋滞中'], angle: ['角度、ほぼゼロ', 'ほぼ真横から'], long: ['ここから撃つの？', '遠い。とても遠い'], tall: ['でかいのがいる', '3mの人がいる'], sleep: ['芝の上で昼寝中', '一人、寝てる'] },
       },
       en: {
         title1: 'Draw Your', title2: 'Super Shot!', sub: 'The line you draw becomes the move', start: 'Draw a move', how: 'How to play',
@@ -80,7 +83,10 @@
         close: 'Close', loading: 'Mowing the pitch', hashtag: 'DrawYourSuperShot',
         tut1: 'Trace up from the ball', tut2: 'Tap a card to see the path', tut3: 'Tap again or Kick',
         muriWarn: 'This line breaks physics', costHeavy: 'Hard on the legs',
-        live: { one: ['Do whatever you like', 'The keeper is yawning'], wall: ['The wall crept forward', 'The wall has eyes shut'], box: ['They are back', 'Traffic jam in the box'], angle: ['Zero angle', 'Almost from the side'], long: ['From here?', 'Far. Very far'], tall: ['Someone huge', 'A 3m tall guy'], sleep: ['Napping on the grass', 'One of them is asleep'] },
+        hit: { tower: ['Timber!', 'Told you 3 was too many', 'Workplace injury'], kata: ['I cannot see!', 'What hit me?!', 'Blame the top guy'], mound: ['My sandcastle!', 'Buried in sand', 'That took 3 hours'], squat: ['I am building here!', 'Under construction'], pyr: ['Heavy...', 'Flattened', 'Sports day is ruined'] },
+        ono: { big: 'WHAM!', mid: 'BOOM', small: 'pok', net: 'SWISH!', tower: 'CRASH', kata: 'THUD', mound: 'SPLASH', pyr: 'CRUNCH', squat: 'BONK', near: 'Eek' }, sign: 'DIG SITE',
+        live: { tower: ['Human tower: complete', 'The top guy is shaking'], kata: ['A shoulder-ride wall. The bottom guys cannot see', 'They got taller (shoulder rides)'], sand: ['Someone is building a sandcastle', 'Sandbox: under construction'], pyr: ['Defending with a human pyramid', 'Sports day rehearsal, apparently'],
+          one: ['Do whatever you like', 'The keeper is yawning'], wall: ['The wall crept forward', 'The wall has eyes shut'], box: ['They are back', 'Traffic jam in the box'], angle: ['Zero angle', 'Almost from the side'], long: ['From here?', 'Far. Very far'], tall: ['Someone huge', 'A 3m tall guy'], sleep: ['Napping on the grass', 'One of them is asleep'] },
       },
     },
   }

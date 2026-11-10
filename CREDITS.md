@@ -26,3 +26,8 @@
 - snd/boing.mp3: 100 CC0 SFX / rubberduck / CC0
 - snd/muri1.mp3: 30 weird CC0 SFX / rubberduck / CC0
 - snd/squeak.mp3: Squeak toy sounds / bart / CC0
+- snd/sand.mp3: 100 CC0 SFX #2 / rubberduck / CC0
+- snd/topple.mp3: 75 CC0 breaking / falling / hit sfx / rubberduck / CC0
+- snd/giggle.mp3: Group giggling / Nocturnal_Vanguard / CC0
+- snd/whoosh.mp3: Swishes Sound Pack / artisticdude / CC0
+- snd/boom.mp3: 75 CC0 breaking / falling / hit sfx / rubberduck / CC0

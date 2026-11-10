@@ -2,7 +2,7 @@ import './mute-auto.mjs'
 // 必殺シュートを描け！ の検証。node verify.mjs
 import { MUTE_LAUNCH, muteContext } from './mute.mjs'
 import { chromium, webkit } from 'playwright'
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { mkdirSync } from 'node:fs'
 import { flow } from './flowcheck.mjs'
 import { lockcheck } from './lockcheck.mjs'
@@ -59,6 +59,18 @@ const scr = (p, list) => p.evaluate(list => { const c = hs.dbg.cam('edit'); retu
 const path = (a, b, n, bend = 0, up = 0) => { const o = []; for (let i = 0; i <= n; i++) { const k = i / n; o.push([a[0] + (b[0] - a[0]) * k + Math.sin(k * Math.PI) * bend, a[1] + (b[1] - a[1]) * k - Math.sin(k * Math.PI) * up]) } return o }
 const lastTech = async p => { const r = await p.evaluate(() => { const t = hs.M.edit.tech; return t && { kind: t.kind, cost: t.cost, muri: t.muri, maxH: +t.maxH.toFixed(2), maxL: +t.maxL.toFixed(2), turn: +t.turn.toFixed(2), speed: +t.speed.toFixed(1), f0: t.rel[0], names: hs.M.edit.names } }); if (!r) return r; await p.evaluate(() => { const b = document.getElementById('bRedo'); if (!document.getElementById('sheet').hidden) setTimeout(() => {}, 0) }); return r }
 const redo = p => p.evaluate(() => { if (!document.getElementById('sheet').hidden) document.getElementById('bRedo').click() })
+
+// ---- バカな守りの形（ブラウザを開かない）と球の速さ（v4）
+await t('バカな守り4種: 真ん中を狙うと当たって止まる・どの場面にも抜け道・砂山はゴロだけ埋まる・試合ごとに4種とも出る', async () => {
+  const r = spawnSync(process.execPath, ['formcheck.mjs'], { cwd: ROOT, encoding: 'utf8' }); const o = JSON.parse(r.stdout.trim().split('\n').pop())
+  expect(r.status === 0, r.stdout.slice(0, 400)); return { matches: o.matches, allFour: o.allFour, stats: o.stats, mound: o.mound }
+})
+await t('球が速い: 0.6秒で描いた線は毎秒28m以上・20mを0.8秒以内で飛ぶ（v3 は毎秒21m・1秒）', async () => {
+  await import('./data.js'); await import('./logic.js'); const { TECHS } = await import('./bots.js'); const HS = globalThis.HS
+  const out = []
+  for (const k of ['lowCorner', 'banana', 'highCorner', 'dip']) { const tech = TECHS[k](); const r = HS.simulateShot({ ball: { x: 0, y: 0, z: -20 }, defs: [], idx: 3 }, tech, false, 0, { noKeeper: true }); const ft = r.frames.findIndex(f => f.b.z >= 0) / 60; out.push({ k, speed: Math.round(r.speed), toGoal: +ft.toFixed(2) }) }
+  expect(out.every(o => o.speed >= 28 && o.toGoal > 0 && o.toGoal <= 0.8), JSON.stringify(out)); return out
+})
 
 const browser = await chromium.launch(MUTE_LAUNCH)
 const p = await open(browser, {}, '?seed=11', true)
@@ -249,6 +261,56 @@ await p.close()
   await q.evaluate(() => { const L = HSBots.BOT_TECHS.reckless(), M = HSBots.BOT_TECHS.mix(); hs.dbg.setTechs([M[0], M[1], L[0], L[3]]) })
   const r = await lockcheck(q, { matches: 6 })
   await t('蹴るまでカメラとキッカーが動かず、球は足先から（全場面・技4つ・反転あり/なし・押す時刻3通り）', async () => { expect(r.n >= 40 && r.moved === 0 && r.far === 0 && r.withFoot >= r.n * 0.8 && Object.keys(r.byType).length >= 6, JSON.stringify(r)); return { n: r.n, moved: r.moved, maxFoot: r.maxFoot, types: Object.keys(r.byType).length, flips: r.flips, timings: r.timings } })
+  await q.close()
+}
+// ---- バカな守りに本物のクリックで蹴る（当たると止まって跳ね返る・埋まる／よけると決まる）
+{
+  const q = await open(browser, {}, '?seed=7')
+  await q.evaluate(() => { hs.dbg.setTechs(HSBots.BOT_TECHS.mix()); hs.dbg.start(5) })
+  const rows = []
+  for (const ty of ['tower', 'kata', 'sand', 'pyr']) for (const mode of ['hit', 'dodge']) {
+    await q.evaluate(([ty, mode]) => {
+      const G = hs.M.match.G, i = G.m.scenes.findIndex(s => s.type === ty); G.marks = {}; G.refUsed = true; G.leg = 100
+      if (mode === 'hit') {   // 守りの真ん中を通る線を4枚目に入れる
+        const sc = G.m.scenes[i], d = sc.defs.find(d => hs.HS.DEF_KIND[d.kind].funny && d.kind !== 'squat'), D = Math.hypot(sc.ball.x, sc.ball.z), u = { x: -sc.ball.x / D, z: -sc.ball.z / D }, R = { x: u.z, z: -u.x }
+        const dx = d.x - sc.ball.x, dz = d.z - sc.ball.z, f = (dx * u.x + dz * u.z) / D, lat = dx * R.x + dz * R.z, hh = { tower: 1.6, kata: 1.3, mound: 0.11, pyr: 1.0 }[d.kind]
+        const rel = []; for (let k = 0; k < 72; k++) { const t = k / 71; rel.push({ f: t * 1.02, l: lat * (t / f) / 20, y: Math.max(0.11, 0.11 + Math.sin(Math.PI * Math.min(1, t / f / 2)) * (hh - 0.11)) }) }
+        const T = hs.HS.makeTech(rel, 650, 'aim'); T.id = 'aim' + i; T.name = 'まっすぐ'; G.techs[3] = T
+      } else G.techs[3] = HSBots.BOT_TECHS.mix()[3]
+      hs.dbg.goto(i)
+    }, [ty, mode])
+    await q.waitForFunction(() => hs.dbg.st() === 'aim', null, { timeout: 8000 })
+    const pk = await q.evaluate(mode => {
+      const m = hs.M.match, sc = m.sc
+      for (const k of [3, 0, 1, 2]) for (const flip of [false, true]) { const t = m.G.techs[k], r = hs.HS.simulateShot(sc, t, flip, hs.HS.readLevel(m.G.marks, t.id, flip)); if (mode === 'hit' ? r.outcome === 'block' && hs.HS.DEF_KIND[r.hitKind].funny : r.outcome === 'goal') return { k, flip } }
+      return null
+    }, mode)
+    if (!pk) { rows.push({ ty, mode, none: 1 }); continue }
+    await q.locator('.card').nth(pk.k).click(); if (pk.flip) await q.click('#bFlip'); await q.waitForTimeout(120)
+    const ghost = await q.evaluate(() => { const m = hs.M.match; return hs.HS.pathHitInfo(m.sc, m.G.techs[m.sel], m.flip).first })
+    await q.locator('.card').nth(pk.k).click()
+    await q.waitForFunction(() => ['after', 'concede'].includes(hs.dbg.st()), null, { timeout: 15000 })
+    const r = await q.evaluate(() => { const r = hs.M.match.res, f = r.frames, o = f[Math.min(f.length - 1, Math.round(r.outT * 60))].b, e = f[f.length - 1].b; return { out: r.outcome, hk: r.hitKind, back: +(o.z - e.z).toFixed(2), moved: +Math.hypot(e.x - o.x, e.z - o.z).toFixed(2), err: window.__drawErr || null } })
+    rows.push({ ty, mode, ghost, ...r })
+  }
+  const bad = rows.filter(r => r.none || r.err || (r.mode === 'hit' ? !(r.out === 'block' && r.ghost >= 0 && (r.hk === 'mound' ? r.moved < 1.5 : r.back > 0.3)) : r.out !== 'goal'))
+  await t('バカな守り: 本物のクリックで当てると止まる（タワー・肩車・ピラミッドは跳ね返る、砂山は埋まる。下書きに「ぶつかる」印）・よけると決まる', async () => { expect(!bad.length && !q.errs.length, JSON.stringify(bad) + q.errs.join('|')); return rows.map(r => `${r.ty}/${r.mode}:${r.out}${r.hk ? '/' + r.hk : ''}`).join(' ') })
+  await q.close()
+}
+// ---- 人の速さの bot で1試合を最後まで（早回しなし。札を選ぶまで0.9秒・蹴るまで1.7秒・ハーフタイムは1.2秒考える）
+{
+  const q = await open(browser, {}, '?seed=31')
+  await q.evaluate(() => { hs.dbg.setTechs(HSBots.BOT_TECHS.human(7)); hs.dbg.start(31, 'human') })
+  const t0 = Date.now(); let halfSeen = 0
+  for (let k = 0; k < 900; k++) {
+    await q.waitForTimeout(200)
+    const s = await q.evaluate(() => ({ half: !document.getElementById('half').hidden, mode: hs.M.mode }))
+    if (s.half) { halfSeen++; await q.waitForTimeout(1200); await q.click('#bSecond') }
+    if (s.mode === 'end') break
+  }
+  const r = await q.evaluate(() => { const G = hs.M.match.G; return { mode: hs.M.mode, us: G.us, them: G.them, log: G.log.map(x => x.outcome + (x.hitKind && hs.HS.DEF_KIND[x.hitKind].funny ? ':' + x.hitKind : '')).join(' '), types: G.m.scenes.map(s => s.type).join(','), err: window.__drawErr || null } })
+  await t('人の速さの bot で1試合を最後まで（ハーフタイム→新聞・エラーなし）', async () => { expect(r.mode === 'end' && halfSeen >= 1 && !r.err && !q.errs.length, JSON.stringify(r) + q.errs.join('|')); return { sec: Math.round((Date.now() - t0) / 1000), score: r.us + '-' + r.them, log: r.log, types: r.types } })
+  await q.screenshot({ path: `${ROOT}/shots/v-human-end.png` })
   await q.close()
 }
 // ---- 同時に出ている文字の数（bot の1試合で 0.1 秒ごとに数える）

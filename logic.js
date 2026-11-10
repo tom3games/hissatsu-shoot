@@ -7,6 +7,8 @@
   const D_EDIT = 20                                  // 技を描く練習場の距離
   const LEG_MAX = 100, LEG_HALF = 40                 // 足の体力（試合全体）とハーフタイムの回復
   const ATTACKS = 8, CLOCK = 12                      // 攻めの回数・1回の持ち時間（秒）
+  const SPEED_BOOST = 1.6                            // 描いた速さから実際に飛ぶ速さへの倍率（v4）
+  const KS = 1.5                                     // キーパーの足の速さ（球を 1.6 倍にした分だけ上げる。v3 の勝ち具合に近づける）
 
   // ---- 乱数（同じ seed なら同じ試合）
   function rng(seed) { let a = seed >>> 0 || 1; return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296 } }
@@ -187,10 +189,13 @@
   // ---- 試合の場面（seed で決まる。8回の攻め）
   function makeMatch(seed) {
     const r = rng(seed)
-    const types = ['box', 'wall', 'angle', 'long', 'box', 'tall', 'wall', 'angle', 'one', 'sleep']
-    // 1回目は1対1（練習）。残りは種類が偏らないように混ぜる
-    const rest = types.slice(); for (let i = rest.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [rest[i], rest[j]] = [rest[j], rest[i]] }
-    const seq = ['one', ...rest.slice(0, ATTACKS - 1)]
+    // 1回目は1対1（練習）。残り7回に、バカな守り方4種（人間タワー・肩車の壁・砂場の山・組体操ピラミッド）を全部と、ふつうの守り3種を混ぜる
+    const shuf = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j], a[i]] } return a }
+    const classic = shuf(['box', 'wall', 'angle', 'long', 'tall', 'sleep']).slice(0, ATTACKS - 1 - FUNNY.length)
+    let rest = shuf([...FUNNY, ...classic])
+    // バカな守りが3回続かないように並べ直す（毎回ちがう守りに見えるように）
+    for (let g = 0; g < 20; g++) { let bad = -1; for (let i = 2; i < rest.length; i++) if (FUNNY.includes(rest[i]) && FUNNY.includes(rest[i - 1]) && FUNNY.includes(rest[i - 2])) { bad = i; break } if (bad < 0) break; rest = shuf(rest) }
+    const seq = ['one', ...rest]
     const scenes = seq.map((ty, i) => makeScene(ty, r, i))
     // 珍しい出来事（試合に1つまで）
     const rare = { ref: r() < 0.45 ? 1 + Math.floor(r() * (ATTACKS - 1)) : -1, dog: r() < 0.3 ? 1 + Math.floor(r() * (ATTACKS - 1)) : -1, bento: r() < 0.35 ? 2 + Math.floor(r() * (ATTACKS - 2)) : -1 }
@@ -225,6 +230,23 @@
       sc.ball = { x: side * (r() * 5), y: 0, z: -(17 + r() * 4) }
       const p = along(sc.ball, 0.4 + r() * 0.15, (r() * 2 - 1) * 0.5); def(p.x, p.z, 'tall')
       const q = along(sc.ball, 0.65, (r() < 0.5 ? -1 : 1) * (2 + r() * 1.5)); def(q.x, q.z)
+    } else if (type === 'tower') {        // 人間タワー（3人重ね。細くて高い柱）
+      sc.ball = { x: side * (r() * 4), y: 0, z: -(16 + r() * 4) }
+      const p = along(sc.ball, 0.42 + r() * 0.15, (r() * 2 - 1) * 0.45); def(p.x, p.z, 'tower')
+      const q = along(sc.ball, 0.7, (r() < 0.5 ? -1 : 1) * (2.3 + r() * 1.2)); def(q.x, q.z)
+    } else if (type === 'kata') {         // 肩車の壁（下の人は上の人に目をふさがれている）
+      sc.ball = { x: side * (r() * 5), y: 0, z: -(19 + r() * 4) }
+      const D = Math.hypot(sc.ball.x, sc.ball.z), f = 9.15 / D, off = (r() * 2 - 1) * 0.7, n = r() < 0.35 ? 3 : 2
+      for (let i = 0; i < n; i++) { const p = along(sc.ball, f, off + (i - (n - 1) / 2) * 0.92); def(p.x, p.z, 'kata') }
+    } else if (type === 'sand') {         // 砂場で山を作っている人（低い山。ゴロは埋まる、浮かせれば越える）
+      sc.ball = { x: side * (r() * 4), y: 0, z: -(16 + r() * 4) }
+      const f = 0.36 + r() * 0.12, lat = (r() * 2 - 1) * 0.35, sd = r() < 0.5 ? -1 : 1
+      const p = along(sc.ball, f, lat); def(p.x, p.z, 'mound')
+      const b = along(sc.ball, f, lat + sd * 1.35); def(b.x, b.z, 'squat')
+      const q = along(sc.ball, 0.7, -sd * (1.8 + r() * 1.2)); def(q.x, q.z)
+    } else if (type === 'pyr') {          // 組体操のピラミッド（3-2-1。真ん中ほど高い）
+      sc.ball = { x: side * (r() * 4), y: 0, z: -(18 + r() * 4) }
+      const p = along(sc.ball, 0.45 + r() * 0.1, (r() * 2 - 1) * 0.6); def(p.x, p.z, 'pyr')
     } else if (type === 'sleep') {
       sc.ball = { x: side * (r() * 4), y: 0, z: -(17 + r() * 3) }
       const p = along(sc.ball, 0.4, (r() * 2 - 1) * 0.8); def(p.x, p.z, 'sleep')
@@ -236,7 +258,26 @@
     let ux = -ball.x, uz = -ball.z; const D = Math.hypot(ux, uz); ux /= D; uz /= D
     return { x: ball.x + ux * f * D + uz * lat, z: ball.z + uz * f * D - ux * lat }
   }
-  const DEF_KIND = { std: { reach: 1.85, jump: 2.45, w: 0.42, react: 2.2 }, wall: { reach: 1.85, jump: 2.4, w: 0.36, react: 0 }, tall: { reach: 3.1, jump: 3.5, w: 0.4, react: 1.2 }, sleep: { reach: 0.45, jump: 0.45, w: 1.0, react: 0 }, spin: { reach: 1.6, jump: 1.6, w: 0.95, react: 1.4 } }
+  const DEF_KIND = { std: { reach: 1.85, jump: 2.45, w: 0.42, react: 2.2 }, wall: { reach: 1.85, jump: 2.4, w: 0.36, react: 0 }, tall: { reach: 3.1, jump: 3.5, w: 0.4, react: 1.2 }, sleep: { reach: 0.45, jump: 0.45, w: 1.0, react: 0 }, spin: { reach: 1.6, jump: 1.6, w: 0.95, react: 1.4 },
+    // バカな守り（動かない・跳ばない）。tower=3人重ね 4.7m、kata=肩車 2.55m、mound=砂山（ドーム 0.72m）、squat=しゃがんで山を作る人、pyr=3-2-1 のピラミッド
+    tower: { reach: 4.7, jump: 4.7, w: 0.42, react: 0, nj: 1, funny: 1 }, kata: { reach: 2.55, jump: 2.55, w: 0.45, react: 0, nj: 1, funny: 1 },
+    mound: { reach: 0.72, jump: 0.72, w: 1.0, react: 0, nj: 1, dome: 1, funny: 1 }, squat: { reach: 1.0, jump: 1.0, w: 0.38, react: 0, nj: 1, funny: 1 },
+    pyr: { reach: 3.45, jump: 3.45, w: 1.38, react: 0, nj: 1, pyr: 1, funny: 1 } }
+  const FUNNY = ['tower', 'kata', 'sand', 'pyr']
+  const PYR = [[-0.85, 0], [0, 0], [0.85, 0], [-0.42, 0.8], [0.42, 0.8], [0, 1.6]]   // ピラミッドの各人の [横, 足の高さ]
+  // 球（中心 b・半径 BR）が守りの形に当たるか。u は蹴る向き（単位）。top は跳んだ分を足した高さ
+  function hitShape(d, k, b, top, u) {
+    const dx = b.x - d.x, dz = b.z - d.z
+    if (k.pyr) {
+      const dep = dx * u.x + dz * u.z, lat = Math.abs(dx * u.z - dz * u.x)
+      if (Math.abs(dep) > 0.4 + BR) return false
+      const h = lat < 0.42 + BR ? 3.45 : lat < 0.85 + BR ? 1.75 : lat < 1.27 + BR ? 0.95 : -1
+      return b.y - BR < h
+    }
+    const hz = Math.hypot(dx, dz)
+    if (k.dome) { if (hz > k.w + BR * 0.3) return false; const h = k.reach * (1 - Math.min(1, (hz / k.w) ** 2)); return b.y - BR < h }
+    return hz < k.w + BR && b.y < top
+  }
 
   // ---- キーパーの読み（同じ技を使うほど読まれる）
   // mark[id] は 0〜3。0=反応が遅い 1=途中から 2=蹴った瞬間に読む 3=見切った（先に行き先へ動いている）
@@ -256,7 +297,10 @@
     const cum = [0]; for (let i = 1; i < path.length; i++) cum.push(cum[i - 1] + V.dist(path[i], path[i - 1]))
     const plen = cum[cum.length - 1]
     // 練習場（20m）で描いた速さを、その場の距離に合わせる
-    const speed = tech.speed * Math.sqrt(D / D_EDIT)
+    // 2026-11-10 v4: 球が遅いと言われた。描いた速さ（足の負担や技名に使う値）はそのまま、飛ぶ速さだけ 1.6 倍（毎秒 16〜48m）
+    const speed = Math.min(48, tech.speed * SPEED_BOOST * Math.sqrt(D / D_EDIT))
+    const un = { x: ux / D, z: uz / D }
+    let near = null   // バカな守りのすぐ横を抜けた（ひぃっ）
     const muriS = tech.muri >= 0 ? tech.muri * plen : Infinity
     const at = s => { let j = 0; while (j < cum.length - 2 && cum[j + 1] < s) j++; const f = clamp((s - cum[j]) / Math.max(1e-6, cum[j + 1] - cum[j]), 0, 1); return { x: lerp(path[j].x, path[j + 1].x, f), y: lerp(path[j].y, path[j + 1].y, f), z: lerp(path[j].z, path[j + 1].z, f) } }
     // ゴールラインを横切る所（技の線の上で）
@@ -271,6 +315,7 @@
     // 読んだ（見が2つ以上）キーパーは場面に関係なく本気
     const dif = level >= 2 || sc.idx == null ? 1 : sc.idx === 0 ? 0.2 : 0.6 + 0.4 * Math.min(1, sc.idx / 7)
     const defs = sc.defs.map(d => ({ ...d, y: 0, jump: 0, k: DEF_KIND[d.kind] }))
+    let hitKind = null
     const frames = []
     let s = 0, t = 0, b = { ...ball0 }, vel = null, outcome = null, hitBy = -1, goalT = -1, onPath = true, muriT = -1, bounces = 0, refT = -1
     const tooLong = 9
@@ -298,13 +343,13 @@
           // 0〜1段: いまの球の向きをまっすぐ伸ばしてゴールラインを予想する（曲がる球にだまされる）
           if ((level === 1 || !K.target) && !(level === 0 && K.locked)) { if (vel && vel.z > 0.5) { K.locked = true; const tt = -b.z / vel.z; K.target = { x: b.x + vel.x * tt, y: b.y + vel.y * tt - 4.9 * tt * tt } } }
           if (K.target) {
-            const tx = clamp(K.target.x, -HALF - 0.5, HALF + 0.5), dx = tx - K.x, mv = 2.4 * dif * dt
+            const tx = clamp(K.target.x, -HALF - 0.5, HALF + 0.5), dx = tx - K.x, mv = 2.4 * KS * dif * dt
             K.x += clamp(dx, -mv, mv)
             const eta = vel && vel.z > 0.3 ? -b.z / vel.z : 9
             if (!K.dive && eta < 0.36 && Math.abs(dx) > 0.45) { K.dive = 1e-6; K.diveDir = Math.sign(dx) }
           }
         }
-        if (K.dive) { K.dive = Math.min(1, K.dive + dt * 3.2); if (K.dive < 1 && K.target && (K.target.x - K.x) * K.diveDir > 0) K.x += K.diveDir * 3.0 * dif * dt }
+        if (K.dive) { K.dive = Math.min(1, K.dive + dt * 3.2); if (K.dive < 1 && K.target && (K.target.x - K.x) * K.diveDir > 0) K.x += K.diveDir * 3.0 * KS * dif * dt }
         // キーパーに当たったか（ゴールの少し手前で）
         if (b.z > -1.2 && b.z < 0.2 && !opt.noKeeper) {
           const reachX = (K.dive ? 0.85 : 0.55) * (0.6 + 0.4 * dif), reachY = K.dive ? 2.0 : 2.35
@@ -319,10 +364,11 @@
             const want = clamp(b.x - d.x, -1, 1); d.x += clamp(want, -k.react * dt, k.react * dt)
           }
           const hz = Math.hypot(b.x - d.x, b.z - d.z)
-          if (hz < 2.2 && b.y > 1.4 && b.y < k.jump + 0.4 && d.kind !== 'sleep') d.jump = Math.min(1, d.jump + dt * 5)
+          if (hz < 2.2 && b.y > 1.4 && b.y < k.jump + 0.4 && d.kind !== 'sleep' && !k.nj) d.jump = Math.min(1, d.jump + dt * 5)
           else d.jump = Math.max(0, d.jump - dt * 3)
           const top = lerp(k.reach, k.jump, d.jump)
-          if (hz < k.w + BR && b.y < top) { outcome = 'block'; hitBy = i }
+          if (hitShape(d, k, b, top, un)) { outcome = 'block'; hitBy = i; hitKind = d.kind }
+          else if (k.funny && !k.dome && !near && hz < k.w + 0.9 && b.y < k.reach + 0.8) near = { i, t }
         }
         // ゴールライン
         if (b.z >= 0 && !outcome) {
@@ -336,6 +382,8 @@
         if (outcome) {
           // 当たった後の跳ね返り
           if (outcome === 'save') { if (opt.catchIt !== false && (!K.dive || Math.abs(b.y - 1) < 0.8)) { vel = { x: 0, y: 0, z: 0 } } else vel = { x: vel.x * -0.2, y: 3, z: -Math.abs(vel.z) * 0.3 } }
+          else if (outcome === 'block' && hitKind === 'mound') vel = { x: vel.x * 0.06, y: 0.8, z: vel.z * 0.05 }   // 砂に埋まる
+          else if (outcome === 'block' && (hitKind === 'tower' || hitKind === 'pyr')) vel = { x: vel.x * 0.25 + (b.x > defs[hitBy].x ? 2.5 : -2.5), y: 5.5, z: -Math.abs(vel.z) * 0.45 }
           else if (outcome === 'block') vel = { x: vel.x * 0.3 + 1.5, y: 4, z: -Math.abs(vel.z) * 0.35 }
           else if (outcome === 'post') vel = { x: -vel.x * 0.4, y: vel.y * 0.3 + 1, z: -Math.abs(vel.z) * 0.5 }
           onPath = outcome === 'goal' ? onPath : false
@@ -350,15 +398,25 @@
       if (outcome && t - after > (outcome === 'goal' ? 1.2 : 1.0)) break
       if (!outcome && t > 7) { outcome = 'short'; frames.outT = t }
     }
-    return { frames, outcome: outcome || 'short', goalT, muriT, cross, plen, speed, level, outT: frames.outT || t, dur: t, hitBy }
+    if (near && hitBy === near.i) near = null
+    return { frames, outcome: outcome || 'short', goalT, muriT, cross, plen, speed, level, outT: frames.outT || t, dur: t, hitBy, hitKind, near }
   }
 
   // 技の線がその場のディフェンダーに当たりそうか（画面の下書きと bot の判断に使う。反応や跳びは見ない）
   function pathHitsDef(sc, tech, flip) {
     const path = toWorld(tech.rel, { x: sc.ball.x, y: BR, z: sc.ball.z }, flip)
-    let n = 0
-    for (const d of sc.defs) { const k = DEF_KIND[d.kind]; for (const p of path) if (Math.hypot(p.x - d.x, p.z - d.z) < k.w + 0.35 && p.y < k.reach + 0.2) { n++; break } }
-    return n
+    return pathHitInfo(sc, tech, flip, path).n
+  }
+  // 通り道が最初に守りに当たる点（画面の下書きに「ぶつかる」印を出す）。少し余裕を見て判定する
+  function pathHitInfo(sc, tech, flip, path) {
+    path = path || toWorld(tech.rel, { x: sc.ball.x, y: BR, z: sc.ball.z }, flip)
+    const D = Math.hypot(sc.ball.x, sc.ball.z), u = { x: -sc.ball.x / D, z: -sc.ball.z / D }
+    let n = 0, first = -1
+    for (const d of sc.defs) {
+      const k = DEF_KIND[d.kind], big = { ...k, w: k.w + (k.pyr || k.dome ? 0.1 : 0.24) }
+      for (let i = 0; i < path.length; i++) { const p = path[i]; if (hitShape(d, big, p, k.reach + 0.2, u)) { n++; if (first < 0 || i < first) first = i; break } }
+    }
+    return { n, first, path }
   }
 
   // ---- 1試合の進行（画面とは別に、bot でも回せる）
@@ -417,5 +475,5 @@
     return { rank, d, kinds, goalKinds: gk, score }
   }
 
-  root.HS = { GW, GH, BR, HALF, D_EDIT, LEG_MAX, LEG_HALF, ATTACKS, CLOCK, rng, clamp, lerp, V, makeCam, fitCam, proj, ray, strokeTo3D, makeTech, toWorld, techNames, makeMatch, simulateShot, pathHitsDef, readLevel, addMark, newGame, playAttack, grade, DEF_KIND, along }
+  root.HS = { GW, GH, BR, HALF, D_EDIT, LEG_MAX, LEG_HALF, ATTACKS, CLOCK, rng, clamp, lerp, V, makeCam, fitCam, proj, ray, strokeTo3D, makeTech, toWorld, techNames, makeMatch, simulateShot, pathHitsDef, pathHitInfo, hitShape, FUNNY, PYR, SPEED_BOOST, readLevel, addMark, newGame, playAttack, grade, DEF_KIND, along }
 })(typeof window !== 'undefined' ? window : globalThis)
