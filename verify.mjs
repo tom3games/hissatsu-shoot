@@ -5,6 +5,7 @@ import { chromium, webkit } from 'playwright'
 import { spawn } from 'node:child_process'
 import { mkdirSync } from 'node:fs'
 import { flow } from './flowcheck.mjs'
+import { lockcheck } from './lockcheck.mjs'
 const ROOT = import.meta.dirname
 mkdirSync(ROOT + '/shots', { recursive: true })
 const PORT = 5974
@@ -240,6 +241,14 @@ await p.close()
 {
   const q = await open(browser, {}, '?seed=21', true)
   await t('進行不能が無い Chromium: タイトル→描く→登録→8回→ハーフ→結果→もう一回→戻る', async () => { await flow(q); expect(!q.errs.length, q.errs.join('|')); const de = await q.evaluate(() => window.__drawErr || null); expect(!de, de) })
+  await q.close()
+}
+// ---- 札を押してから球が飛び出すまで カメラ・キッカーが動かない／球は足先から（2026-11-10 蹴る瞬間に次の場面へ切り替わっていた）
+{
+  const q = await open(browser, { viewport: { width: 390, height: 664 } }, '?seed=3')
+  await q.evaluate(() => { const L = HSBots.BOT_TECHS.reckless(), M = HSBots.BOT_TECHS.mix(); hs.dbg.setTechs([M[0], M[1], L[0], L[3]]) })
+  const r = await lockcheck(q, { matches: 6 })
+  await t('蹴るまでカメラとキッカーが動かず、球は足先から（全場面・技4つ・反転あり/なし・押す時刻3通り）', async () => { expect(r.n >= 40 && r.moved === 0 && r.far === 0 && r.withFoot >= r.n * 0.8 && Object.keys(r.byType).length >= 6, JSON.stringify(r)); return { n: r.n, moved: r.moved, maxFoot: r.maxFoot, types: Object.keys(r.byType).length, flips: r.flips, timings: r.timings } })
   await q.close()
 }
 // ---- 同時に出ている文字の数（bot の1試合で 0.1 秒ごとに数える）

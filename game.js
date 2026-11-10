@@ -35,6 +35,8 @@
     W = Math.max(280, innerWidth); H = Math.max(400, innerHeight); DPR = Math.min(2, devicePixelRatio || 1)
     cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR)
     camCache.clear(); bgCache.clear()
+    // 狙う前（札を選ぶ前）だけカメラを画面に合わせ直す。札を選んだ後は蹴り終わるまで固定
+    const m = M.match; if (m && (m.st === 'intro' || (m.st === 'aim' && m.sel < 0))) { m.cam = null; m.spot = null }
   }
   const camCache = new Map(), bgCache = new Map()
   function camFor(ball, kind) {
@@ -193,14 +195,20 @@
 
   // ---------------- 棒人間
   // 体の各点（m・腰が原点に近い）。pose ごとに組む
+  // 蹴る瞬間の足先（体の中心から右へ 0.3m・高さは球の中心）。キッカーはこの点が球に重なる所に立つ
+  const KICK_FOOT = { x: 0.3, y: 0.11 }, KICK_HIT = 0.6
   function skel(pose, ph, o = {}) {
     const S = (x, y) => ({ x, y })
     const sw = Math.sin(ph), cw = Math.cos(ph)
     let j
     switch (pose) {
       case 'run': j = { hip: S(0, 0.95), neck: S(0.04, 1.5), lE: S(-0.18 - sw * 0.1, 1.22), lH: S(-0.12 - sw * 0.25, 1.0), rE: S(0.18 + sw * 0.1, 1.22), rH: S(0.12 + sw * 0.25, 1.0), lK: S(-0.08 + sw * 0.22, 0.5), lF: S(-0.1 + sw * 0.35, 0.05 + Math.max(0, sw) * 0.12), rK: S(0.08 - sw * 0.22, 0.5), rF: S(0.1 - sw * 0.35, 0.05 + Math.max(0, -sw) * 0.12) }; break
-      case 'kick': { const k = o.k || 0, back = k < 0.45 ? k / 0.45 : 1 - (k - 0.45) / 0.55, up = k > 0.45 ? (k - 0.45) / 0.55 : 0
-        j = { hip: S(0, 0.95), neck: S(-0.06 - up * 0.1, 1.47), lE: S(-0.32, 1.35), lH: S(-0.55, 1.45), rE: S(0.3, 1.2), rH: S(0.48, 1.05), lK: S(-0.12, 0.5), lF: S(-0.14, 0.03), rK: S(0.1 - back * 0.25 + up * 0.35, 0.55 - back * 0.05 + up * 0.35), rF: S(0.05 - back * 0.45 + up * 0.75, 0.15 + back * 0.25 + up * 0.6) }; break }
+      case 'kick': {
+        // 蹴る足: 0〜0.45 振り上げ → KICK_HIT で足先が KICK_FOOT（＝球の位置）に当たる → 1 まで振り抜き
+        const k = o.k || 0, F = KICK_FOOT, a = (k - 0.45) / (KICK_HIT - 0.45), b = (k - KICK_HIT) / (1 - KICK_HIT)
+        const kf = k < 0.45 ? [lerp(0.12, -0.42, k / 0.45), lerp(0.04, 0.45, k / 0.45)] : k < KICK_HIT ? [lerp(-0.42, F.x, a), lerp(0.45, F.y, a)] : [lerp(F.x, 0.55, b), lerp(F.y, 0.75, b)]
+        const lean = k < 0.45 ? k / 0.45 * 0.06 : 0.06 - (k - 0.45) * 0.2
+        j = { hip: S(0, 0.95), neck: S(-lean, 1.47), lE: S(-0.32, 1.35), lH: S(-0.55, 1.45), rE: S(0.3, 1.2), rH: S(0.48, 1.05), lK: S(-0.12, 0.5), lF: S(-0.14, 0.03), rK: S((kf[0] + 0.02) * 0.55, (kf[1] + 0.95) * 0.5 + 0.02), rF: S(kf[0], kf[1]) }; break }
       case 'ready': j = { hip: S(0, 0.82), neck: S(0, 1.38), lE: S(-0.42, 1.25), lH: S(-0.62, 1.42), rE: S(0.42, 1.25), rH: S(0.62, 1.42), lK: S(-0.25, 0.45), lF: S(-0.32, 0.03), rK: S(0.25, 0.45), rF: S(0.32, 0.03) }; break
       case 'dive': j = { hip: S(0, 0.95), neck: S(0, 1.5), lE: S(-0.12, 1.85), lH: S(-0.15, 2.15), rE: S(0.12, 1.85), rH: S(0.15, 2.15), lK: S(-0.1, 0.5), lF: S(-0.18, 0.08), rK: S(0.14, 0.55), rF: S(0.22, 0.15) }; break
       case 'jump': j = { hip: S(0, 0.95), neck: S(0, 1.5), lE: S(-0.25, 1.75), lH: S(-0.3, 2.0), rE: S(0.25, 1.75), rH: S(0.3, 2.0), lK: S(-0.12, 0.52), lF: S(-0.08, 0.12), rK: S(0.12, 0.52), rF: S(0.08, 0.12) }; break
@@ -261,7 +269,7 @@
     }
     if (P.bento) { g.fillStyle = '#c4402a'; g.fillRect(J.lH.x - 0.12 * s, J.lH.y - 0.06 * s, 0.24 * s, 0.14 * s); g.fillStyle = '#fff'; g.fillRect(J.lH.x - 0.1 * s, J.lH.y - 0.05 * s, 0.1 * s, 0.06 * s) }
     if (P.whistle) { g.fillStyle = '#d8d8d8'; g.beginPath(); g.arc(hd.x + hr * 0.6, hd.y + hr * 0.6, Math.max(1.2, hr * 0.22), 0, 7); g.fill() }
-    return { head: hd, hr, s }
+    return { head: hd, hr, s, rF: J.rF, base }
   }
   function dog(g, cam, x, z, ph) {
     const b = proj(cam, { x, y: 0, z }); if (!b) return
@@ -464,10 +472,12 @@
     beginAttack()
   }
   function backToMatch() { show('match'); applyLang(); renderCards(); updateLed(); M.match.G.techs = techs.map(t => t); beginAttack() }
-  function sceneNow() { const m = M.match; return m.G.m.scenes[m.G.i] }
+  // いま描いている攻めの場面。蹴った瞬間に G.i は次へ進むので、攻めの最初に決めた m.sc を最後まで使う（2026-11-10 蹴る瞬間に次の場面のカメラと立ち位置に切り替わっていた）
+  function sceneNow() { const m = M.match; return m.sc || m.G.m.scenes[m.G.i] }
   function beginAttack() {
-    const m = M.match, sc = sceneNow()
-    fx.zoom = 1; fx.zoomT = 1; fx.shake = 0; fx.dark = 0
+    const m = M.match, sc = m.sc = m.G.m.scenes[m.G.i]
+    m.shown = { us: m.G.us, them: m.G.them }
+    fx.zoom = 1; fx.zoomT = 1; fx.shake = 0; fx.dark = 0; m.cam = null; m.spot = null; m.probe = null
     m.st = 'intro'; m.t = 0; m.sel = -1; m.flip = false; m.clock = HS.CLOCK; m.pb = null; m.net = {}; m.trail = []; m.botT = 0
     m.kx = clamp(sc.ball.x * 0.12, -1.2, 1.2); m.defs = sc.defs.map(d => ({ ...d, jump: 0 })); m.shooter = { pose: 'idle', fall: 0 }
     m.dog = sc.dog ? { x: -26, z: sc.ball.z * 0.5 } : null
@@ -475,10 +485,12 @@
     const lines = T().live[sc.type] || ['']
     live(sc.bento ? T().bento : sc.dog ? T().dog : lines[sc.idx % lines.length])
   }
-  function minute() { const i = M.match.G.i; return Math.min(90, i < HS.ATTACKS / 2 ? 6 + i * 10 : 50 + (i - HS.ATTACKS / 2) * 10) }
+  // 掲示板は攻めの頭と結果が出た時だけ書き換える（蹴った瞬間に点や時間が先に変わって結果がばれていた）
+  function minute() { const m = M.match, i = m.sc ? m.sc.idx : m.G.i; return Math.min(90, i < HS.ATTACKS / 2 ? 6 + i * 10 : 50 + (i - HS.ATTACKS / 2) * 10) }
   function updateLed() {
     const m = M.match; if (!m) return
-    $('ledScore').textContent = m.G.us + '-' + m.G.them; $('ledMin').textContent = minute() + "'"
+    const sh = m.shown || (m.shown = { us: m.G.us, them: m.G.them })
+    $('ledScore').textContent = sh.us + '-' + sh.them; $('ledMin').textContent = minute() + "'"
     $('legFill').style.width = clamp(m.G.leg / HS.LEG_MAX, 0, 1) * 100 + '%'
     const t = m.sel >= 0 ? m.G.techs[m.sel] : null, lc = $('legCost')
     if (t) { const a = clamp((m.G.leg - t.cost) / HS.LEG_MAX, 0, 1), b = clamp(m.G.leg / HS.LEG_MAX, 0, 1); lc.style.left = a * 100 + '%'; lc.style.width = (b - a) * 100 + '%'; lc.hidden = false } else lc.style.width = '0'
@@ -528,6 +540,7 @@
   let keeperHead = () => null, ballScreen = () => null
   function finishAttack() {
     const m = M.match, r = m.res
+    m.shown = { us: m.G.us, them: m.G.them }
     updateLed()
     if (r.oppGoal || r.outcome === 'fall' || r.outcome === 'timeout') {
       m.st = 'concede'; m.t = 0
@@ -593,6 +606,7 @@
     // ネット
     if (r.outcome === 'goal' && pb.t >= r.goalT && !pb.said.goal) {
       pb.said.goal = 1; const b = f.b
+      m.shown = { us: m.G.us, them: m.shown ? m.shown.them : m.G.them }; updateLed()
       const tearIt = (m.tech.cost >= 12 || r.speed > 22)
       m.net = { b: 0.1, x: b.x, y: b.y, tear: tearIt, tx: b.x, ty: clamp(b.y, 0.4, 1.8), tr: 0 }
       shout(T().r_goal); bigName(m.tech.name, true); Snd.play('crash', { vol: 0.7 }); Snd.play('roar', { vol: 1 }); if (tearIt) Snd.play('rip', { vol: 0.9, delay: 0.12 })
@@ -708,7 +722,7 @@
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0)
     let cam, sc = null
     if (M.mode === 'edit') cam = camFor(EDIT_BALL, 'edit')
-    else if (M.mode === 'match' || (M.mode === 'end' && M.match)) { sc = sceneNow() || M.match.G.m.scenes[HS.ATTACKS - 1]; cam = camFor(sc.ball, 'match') }
+    else if (M.mode === 'match' || (M.mode === 'end' && M.match)) { sc = sceneNow() || M.match.G.m.scenes[HS.ATTACKS - 1]; cam = (M.match.cam && M.match.cam.sc === sc) ? M.match.cam : (M.match.cam = Object.assign(Object.create(camFor(sc.ball, 'match')), { sc })) }   // 攻めの間はカメラを固定
     else cam = camFor({ x: -3, y: 0, z: -17 }, 'title')
     // 寄り（溜め・ゴールの瞬間に少しズーム）
     ctx.save()
@@ -842,16 +856,18 @@
     // 蹴る人
     const u = { x: -sc.ball.x, z: -sc.ball.z }, ul = Math.hypot(u.x, u.z); u.x /= ul; u.z /= ul
     const rgt = { x: u.z, z: -u.x }
-    let sp = { pose: 'idle', ph: vt * 2, band: '#e0322b', bandTail: 1, col: '#e0322b', face: 'n', seed: 1 }
-    let back = 0.45, side = -1.0
-    if (m.st === 'tame') { const k = clamp((m.t - 0.75) / 0.4, 0, 1); back = lerp(1.7, 0.5, k); sp.pose = k > 0 ? 'run' : 'idle'; sp.ph = m.t * 18; if (k >= 0.85) { sp.pose = 'kick'; sp.k = (k - 0.85) / 0.15 * 0.45 } if (m.t < 0.75) { back = 1.7; sp.face = 'smug' } }
-    else if (m.st === 'fly') { sp.pose = 'kick'; sp.k = clamp(0.45 + m.pb.t * 3, 0, 1); back = 0.55; if (m.res.cost >= 30 && m.pb.t > 0.35) { sp.pose = 'idle'; sp.rot = Math.min(1.5, (m.pb.t - 0.35) * 5); sp.face = 'o' } }
-    else if (m.st === 'fall') { back = 0.6; sp.pose = 'kick'; sp.k = 0.3; sp.rot = Math.min(1.55, m.t * 5); sp.face = 'o'; sp.y0 = 0 }
+    // 立ち位置は攻めごとに1回だけ決める（kickerSpot）。札を選んでから球が飛び出すまで動かない。左右反転は狙う間だけ反映
+    const spot = kickerSpot(m, sc)
+    let sp = { pose: 'idle', ph: vt * 2, band: '#e0322b', bandTail: 1, col: '#e0322b', face: 'n', seed: 1, mirror: spot.mirror }
+    if (m.st === 'aim' || m.st === 'intro') { sp.pose = 'kick'; sp.k = 0; sp.face = m.sel >= 0 ? 'smug' : 'n' }
+    else if (m.st === 'tame') { sp.pose = 'kick'; sp.k = m.t < 0.75 ? 0 : clamp((m.t - 0.75) / 0.4, 0, 1) * KICK_HIT; sp.face = 'smug' }
+    else if (m.st === 'fly') { sp.pose = 'kick'; sp.k = clamp(KICK_HIT + m.pb.t * 1.6, 0, 1); if (m.res.cost >= 30 && m.pb.t > 0.35) { sp.pose = 'idle'; sp.rot = Math.min(1.5, (m.pb.t - 0.35) * 5); sp.face = 'o' } }
+    else if (m.st === 'fall') { sp.pose = 'kick'; sp.k = 0.3; sp.rot = Math.min(1.55, m.t * 5); sp.face = 'o'; sp.y0 = 0 }
     else if (m.st === 'after') { if (m.res.outcome === 'goal') { sp.pose = 'cheer'; sp.ph = vt * 10; sp.face = 'joy' } else if (m.res.cost >= 30) { sp.pose = 'idle'; sp.rot = 1.5; sp.face = 'o' } else { sp.pose = 'sad'; sp.face = 'o' } }
     else if (m.st === 'steal') { sp.pose = 'sad'; sp.face = 'o' }
-    const shx = sc.ball.x - u.x * back + rgt.x * side, shz = sc.ball.z - u.z * back + rgt.z * side
+    const shx = spot.x, shz = spot.z
     let shead = null
-    add({ x: shx, y: 1, z: shz }, () => { shead = stick(ctx, cam, shx, shz, sp) })
+    add({ x: shx, y: 1, z: shz }, () => { shead = stick(ctx, cam, shx, shz, sp); lockProbe(m, cam, spot, shead, sc) })
     shooterHead = () => { const p = proj(cam, { x: shx, y: 2.0, z: shz }); return p }
     // ボール
     let bp = { x: sc.ball.x, y: BR, z: sc.ball.z }
@@ -863,6 +879,26 @@
     const bb = bp, spin = m.pb ? m.pb.t * 30 : 0
     add(bb, () => ballAt(ctx, cam, bb, spin, m.st === 'fly' && m.pb.rate < 1))
     ballScreen = () => { const p = proj(cam, bb); return p && { x: p.x, y: p.y - 14 } }
+  }
+  // キッカーの立ち位置: 蹴る瞬間の足先（KICK_FOOT）がちょうど球に重なる所。カメラの右（R）の向きでずらす
+  function kickerSpot(m, sc) {
+    const aiming = m.st === 'aim' || m.st === 'intro', mirror = !!(m.sel >= 0 && m.flip)
+    if (m.spot && m.spot.sc === sc && (!aiming || m.spot.mirror === mirror)) return m.spot   // 蹴り始めたら変えない
+    const cam = m.cam || camFor(sc.ball, 'match'), sg = mirror ? -1 : 1
+    m.spot = { x: sc.ball.x - cam.R.x * KICK_FOOT.x * sg - cam.F.x * 0.04, z: sc.ball.z - cam.R.z * KICK_FOOT.x * sg - cam.F.z * 0.04, mirror, sc }
+    return m.spot
+  }
+  // 検査用: 狙いの線が出てから球が飛び出すまで、カメラとキッカーが動かないか・球の出発点が足先か を記録する
+  function lockProbe(m, cam, spot, sh, sc) {
+    if (!sh) return
+    const camSig = [cam.C.x, cam.C.y, cam.C.z, cam.F.x, cam.F.y, cam.F.z, cam.f, cam.cx, cam.cy, fx.zoom].map(v => +v.toFixed(4)).join(',')
+    const sig = camSig + '|' + spot.x.toFixed(4) + ',' + spot.z.toFixed(4) + ',' + spot.mirror + '|' + Math.round(sh.base.x) + ',' + Math.round(sh.base.y)
+    if (m.st === 'aim' && m.sel >= 0) { if (!m.probe || m.probe.sig0 !== sig && m.probe.phase === 'aim') m.probe = { sig0: sig, phase: 'aim', diff: 0 } }
+    else if (m.probe && (m.st === 'tame' || (m.st === 'fly' && m.probe.foot == null))) {
+      m.probe.phase = m.st; if (sig !== m.probe.sig0) { m.probe.diff++; m.probe.bad = sig }
+      // 足先が球に当たる点（蹴る瞬間の姿勢の足先）と、球の出発点の距離（画面 px）
+      if (m.st === 'fly' && m.probe.foot == null && m.pb) { const b = proj(cam, { x: sc.ball.x, y: BR, z: sc.ball.z }), sg = spot.mirror ? -1 : 1, hx = sh.base.x + KICK_FOOT.x * sh.s * sg, hy = sh.base.y - KICK_FOOT.y * sh.s; m.probe.foot = b ? Math.round(Math.hypot(b.x - hx, b.y - hy)) : 999 }
+    }
   }
   function refPos(sc) { const u = { x: -sc.ball.x, z: -sc.ball.z }, l = Math.hypot(u.x, u.z); return { x: sc.ball.x + u.x / l * 6 + 2.5, z: sc.ball.z + u.z / l * 6 } }
   let shooterHead = () => null
@@ -942,7 +978,7 @@
       setTechs(list) { techs = list.slice(0, 4); techs.forEach((t, i) => t.id = t.id || 'd' + i); saveTechs() },
       bot(kind) { if (M.match) M.match.bot = kind; window.__hsBot = kind },
       start(seed, bot) { startMatch(seed); if (bot) M.match.bot = bot },
-      edit() { openEdit('title') }, kick, choose: chooseCard, cam: kind => kind === 'edit' ? camFor(EDIT_BALL, 'edit') : camFor(sceneNow().ball, 'match'),
+      edit() { openEdit('title') }, kick, choose: chooseCard, cam: kind => kind === 'edit' ? camFor(EDIT_BALL, 'edit') : (M.match.cam || camFor(sceneNow().ball, 'match')), probe: () => M.match && M.match.probe,
       end: () => endMatch(), G: () => M.match && M.match.G, setLeg: v => { M.match.G.leg = v; updateLed(); renderCards() },
       mode: () => M.mode, photo: ok => takePhoto(ok), photoErr: () => window.__photoErr, st: () => M.match && M.match.st, vt: () => vt,
     },
@@ -959,7 +995,8 @@
     const tk = setInterval(() => {
       i++; const k = i / n; ev('pointermove', b.x + (g.x - b.x) * k + Math.sin(k * Math.PI) * W * 0.25, b.y + (g.y - b.y) * k - Math.sin(k * Math.PI) * 40)
       if (i >= n) { clearInterval(tk); ev('pointerup', g.x, g.y); if (AUTO === 'sheet') return
-        setTimeout(() => { $('bSave').click(); const L = window.HSBots.BOT_TECHS.mix(); L[1].name = '三日月バナナ弾'; L[2].name = '流星ドロップ砲'; L[3].name = '地獄ローリング撃'; window.hs.dbg.setTechs([techs[0], L[1], L[2], L[3]]); window.hs.dbg.start(+(Q.get('seed') || 5), AUTO === 'aim' ? null : 'mix'); if (AUTO === 'end') dbgState.rate = 6; if (AUTO === 'aim') setTimeout(() => chooseCard(+(Q.get('card') || 1)), 1500) }, 900) }
+        setTimeout(() => { $('bSave').click(); const L = window.HSBots.BOT_TECHS.mix(); L[1].name = '三日月バナナ弾'; L[2].name = '流星ドロップ砲'; L[3].name = '地獄ローリング撃'; window.hs.dbg.setTechs([techs[0], L[1], L[2], L[3]]); window.hs.dbg.start(+(Q.get('seed') || 5), AUTO === 'aim' || AUTO === 'kick' ? null : 'mix'); if (AUTO === 'end') dbgState.rate = 6; if (Q.get('at')) { const G = M.match.G; G.i = +Q.get('at'); if (G.i >= HS.ATTACKS / 2) G.half = true; beginAttack() }
+          if (AUTO === 'aim' || AUTO === 'kick') setTimeout(() => { chooseCard(+(Q.get('card') || 1)); if (Q.get('flip')) $('bFlip').click(); if (AUTO === 'kick') setTimeout(kick, 1200) }, 1500) }, 900) }
     }, 30)
   }, 1200)
   window.__hsReady = true
