@@ -1,0 +1,28 @@
+- snd/amb_crowd.mp3: File:WWS FootballAustriavs.Sweden.ogg（切り出し） / Work With Sounds / Torsten Nilsson / CC BY 4.0
+- snd/roar.mp3: File:WWS FootballAustriavs.Sweden.ogg（切り出し） / Work With Sounds / Torsten Nilsson / CC BY 4.0
+- snd/ooh.mp3: File:WWS FootballAustriavs.Sweden.ogg（切り出し） / Work With Sounds / Torsten Nilsson / CC BY 4.0
+- snd/whistle_s.mp3: File:218318 splicesound referee-whistle-blow-gymnasium.wav（切り出し） / SpliceSound / CC0
+- snd/whistle_l.mp3: File:218318 splicesound referee-whistle-blow-gymnasium.wav（切り出し） / SpliceSound / CC0
+- snd/kick1.mp3: Thwack Sounds / AntumDeluge / CC0
+- snd/kick2.mp3: Thwack Sounds / AntumDeluge / CC0
+- snd/kick3.mp3: Thwack Sounds / AntumDeluge / CC0
+- snd/don.mp3: File:02_Taiko2_(short).oga (切り出し) / Scott Harding / CC0
+- snd/don2.mp3: File:02_Taiko2_(short).oga (切り出し) / Scott Harding / CC0
+- snd/crash.mp3: File:I_C_15356_a+b_x.ogg (切り出し) / Andreas Richter / CC BY 3.0
+- snd/fall1.mp3: 75 CC0 breaking / falling / hit sfx / rubberduck / CC0
+- snd/thud.mp3: 75 CC0 breaking / falling / hit sfx / rubberduck / CC0
+- snd/grunt1.mp3: Little Grunts / crueltyinc / CC0
+- snd/grunt2.mp3: Little Grunts / crueltyinc / CC0
+- snd/grunt3.mp3: Little Grunts / crueltyinc / CC0
+- snd/rip1.mp3: 100 CC0 SFX / rubberduck / CC0
+- snd/rip2.mp3: 100 CC0 SFX / rubberduck / CC0
+- snd/catch.mp3: File:Smack (Gravity Sound).mp3 / Gravity Sound / CC BY 4.0
+- snd/block.mp3: File:Smack 2 (Gravity Sound).mp3 / Gravity Sound / CC BY 4.0
+- snd/win.mp3: 85 Short music jingles / Kenney / CC0
+- snd/lose.mp3: 85 Short music jingles / Kenney / CC0
+- snd/ok.mp3: Interface Sounds / Kenney / CC0
+- snd/sel.mp3: Interface Sounds / Kenney / CC0
+- snd/swish.mp3: Swishes Sound Pack / artisticdude / CC0
+- snd/boing.mp3: 100 CC0 SFX / rubberduck / CC0
+- snd/muri1.mp3: 30 weird CC0 SFX / rubberduck / CC0
+- snd/squeak.mp3: Squeak toy sounds / bart / CC0
