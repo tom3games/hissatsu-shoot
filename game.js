@@ -15,6 +15,7 @@
   const touchy = matchMedia('(pointer:coarse)').matches || 'ontouchstart' in window
   const R0 = HS.rng(+(Q.get('seed') || Date.now() % 100000))
   const pick = a => a[Math.floor(R0() * a.length)]
+  const AUTO_Q = !!Q.get('auto')
 
   // ---------------- 音（全部録音素材）
   Snd.def({
@@ -39,7 +40,7 @@
   function camFor(ball, kind) {
     const key = kind + ':' + ball.x.toFixed(2) + ',' + ball.z.toFixed(2) + ':' + W + 'x' + H
     if (!camCache.has(key)) {
-      const o = kind === 'edit' ? { yb: 0.6, yg: 0.27, back: 8 } : kind === 'title' ? { yb: 0.86, yg: 0.47, back: 6 } : { yb: 0.64, yg: 0.29, back: 8.5 }
+      const o = kind === 'edit' ? { yb: 0.6, yg: 0.27, back: 8, gw: 0.8 } : kind === 'title' ? { yb: 0.86, yg: 0.47, back: 6 } : { yb: 0.66, yg: 0.3, back: 15, gw: 0.8, hmin: 6, hmax: 10, fovMin: 18 }
       if (H < 700) { o.yb -= 0.02; o.yg -= 0.02 }
       const c = HS.fitCam(ball, W, H, o); c.key = key; camCache.set(key, c)
     }
@@ -305,6 +306,7 @@
     $('bStart').textContent = t.start; $('bHow').textContent = t.how
     $('bRedo').textContent = t.redo; $('bSave').textContent = t.save; $('bPlay').textContent = t.play
     $('costLab').textContent = t.leg; $('legLab').textContent = t.leg
+    $('bBack').textContent = t.back; $('pickHint').textContent = t.pick
     $('bFlip').textContent = t.flip; $('bKick').textContent = t.kick
     $('ledUs').textContent = t.you; $('ledThem').textContent = D.teams[lang][(M.match && M.match.G.m.team) || 0] || ''
     $('halfH').textContent = t.half; $('halfP').textContent = t.halfSub; $('bRedraw').textContent = t.redraw; $('bSecond').textContent = t.second
@@ -318,6 +320,12 @@
     if (M.mode === 'end' && M.result) renderPaper()
     bgCache.clear()
   }
+  $('bBack').onclick = () => {
+    $('how').hidden = true; $('half').hidden = true; bigName('', false)
+    if (M.mode === 'edit') { if (M.edit && M.edit.from === 'half' && M.match) backToMatch(); else show('title') }
+    else if (M.mode === 'match') { if (M.match) M.match.st = 'over'; openEdit('title') }
+    else show('title')
+  }
   $('bLang').onclick = () => { lang = lang === 'ja' ? 'en' : 'ja'; store.set('lang', lang); applyLang() }
   function setMuteIcon() { $('icoWave').style.display = Snd.muted ? 'none' : '' }
   $('bMute').onclick = () => { Snd.setMute(!Snd.muted); store.set('mute', Snd.muted); setMuteIcon() }
@@ -328,6 +336,7 @@
   function show(mode) {
     M.mode = mode
     for (const k in views) views[k].hidden = k !== mode
+    $('bBack').hidden = mode === 'title' || mode === 'end'
     $('bigName').className = lang === 'en' ? 'en' : ''; $('shout').className = ''
     bubble(null)
   }
@@ -389,7 +398,7 @@
     if (!tech) { E.stroke = null; updateEditHint(); return }
     tut.draw = 1; store.set('tut', tut); stopFinger()
     E.tech = tech; E.names = HS.techNames(tech, lang, (Date.now() & 0xffff) + st.pts.length); E.name = E.names[0]
-    E.prev = { sim: HS.simulateShot({ ball: EDIT_BALL, defs: [], type: 'edit' }, tech, false, 0, {}), t: 0 }
+    E.prev = { sim: HS.simulateShot({ ball: EDIT_BALL, defs: [], type: 'edit' }, tech, false, 0, { noKeeper: true }), t: 0 }
     E.prev.noKeeper = true
     Snd.play('swish', { vol: 0.6 })
     openSheet()
@@ -415,7 +424,7 @@
     if (E.slot < techs.length) techs[E.slot] = t; else techs.push(t)
     techs = techs.slice(0, 4); saveTechs()
     Snd.play('ok', { vol: 0.7 })
-    E.tech = null; E.stroke = null; E.prev = null; E.slot = Math.min(techs.length, 3); if (techs.length >= 4) E.slot = -1
+    E.tech = null; E.stroke = null; E.prev = null; E.slot = Math.min(techs.length, 3)   // 4つ埋まったら最初の札を上書き（選べば変えられる）
     $('sheet').hidden = true; renderSlots(); updateEditHint()
     if (E.from === 'half' && M.match) { /* ハーフタイムから: 描き直しは1回で後半へ */ setTimeout(() => backToMatch(), 250) }
   }
@@ -458,10 +467,11 @@
   function sceneNow() { const m = M.match; return m.G.m.scenes[m.G.i] }
   function beginAttack() {
     const m = M.match, sc = sceneNow()
+    fx.zoom = 1; fx.zoomT = 1; fx.shake = 0; fx.dark = 0
     m.st = 'intro'; m.t = 0; m.sel = -1; m.flip = false; m.clock = HS.CLOCK; m.pb = null; m.net = {}; m.trail = []; m.botT = 0
     m.kx = clamp(sc.ball.x * 0.12, -1.2, 1.2); m.defs = sc.defs.map(d => ({ ...d, jump: 0 })); m.shooter = { pose: 'idle', fall: 0 }
     m.dog = sc.dog ? { x: -26, z: sc.ball.z * 0.5 } : null
-    $('actRow').hidden = true; renderCards(); updateLed()
+    $('actRow').hidden = true; $('pickHint').hidden = true; renderCards(); updateLed()
     const lines = T().live[sc.type] || ['']
     live(sc.bento ? T().bento : sc.dog ? T().dog : lines[sc.idx % lines.length])
   }
@@ -506,12 +516,12 @@
     for (const el of $('cards').children) el.disabled = true
     live(null); bigName(tech.name, true)
     Snd.play('don', { vol: 0.9 }); Snd.duck(0.35, 2.2)
-    fx.dark = 1; fx.lines = 1
+    fx.dark = 1; fx.lines = 1; $('pickHint').hidden = true
     if (level >= 3 && res.outcome !== 'fall') setTimeout(() => { if (M.match === m) bubble(T().r_saveRead, () => keeperHead(), 1.6) }, 200)
     updateLed()
   }
   function timeoutAttack() {
-    const m = M.match; m.res = HS.playAttack(m.G, null); m.tech = null; m.st = 'steal'; m.t = 0; $('actRow').hidden = true
+    const m = M.match; m.res = HS.playAttack(m.G, null); m.tech = null; m.st = 'steal'; m.t = 0; $('actRow').hidden = true; $('pickHint').hidden = true
     for (const el of $('cards').children) el.disabled = true
     bubble(T().r_timeout, () => ballScreen(), 1.4); Snd.play('ooh', { vol: 0.5 })
   }
@@ -530,7 +540,7 @@
   function nextAttack() {
     const m = M.match, r = m.res
     if (r.over) return endMatch()
-    if (r.half) { m.st = 'half'; Snd.play('whistleL', { vol: 0.7 }); $('half').hidden = false; return }
+    if (r.half) { m.st = 'half'; Snd.play('whistleL', { vol: 0.7 }); $('half').hidden = false; if (m.bot && AUTO_Q) setTimeout(() => $('bSecond').click(), 1500); return }
     beginAttack()
   }
   $('bSecond').onclick = () => { $('half').hidden = true; beginAttack() }
@@ -545,7 +555,8 @@
     for (const d of m.defs || []) if (d.kind === 'spin') d.ph = (d.ph || 0) + dt * 6
     if (m.st === 'intro') { if (m.t > 0.7) { m.st = 'aim'; m.t = 0; renderCards(); if (!tut.card) live(T().tut2, 3) } }
     else if (m.st === 'aim') {
-      m.clock -= dt; $('clock').firstElementChild.style.width = clamp(m.clock / HS.CLOCK, 0, 1) * 100 + '%'
+      { const ph = $('pickHint'), want = m.sel < 0; if (ph.hidden === want) ph.hidden = !want }
+    m.clock -= dt; $('clock').firstElementChild.style.width = clamp(m.clock / HS.CLOCK, 0, 1) * 100 + '%'
       if (m.bot) { m.botT += dt; if (m.botT > 0.9 && m.sel < 0) { const c = window.HSBots.botChoose(m.bot, m.G, m.G.m.seed); if (!c) m.botT = -99; else { m.sel = m.G.techs.findIndex(t => t.id === c.id); m.flip = c.flip; renderCards(); updateLed() } } else if (m.botT > 1.7 && m.sel >= 0) kick() }
       if (m.clock <= 0) timeoutAttack()
     } else if (m.st === 'tame') {
@@ -557,7 +568,7 @@
         m.ran = false
         if (m.res.outcome === 'fall') { m.st = 'fall'; m.t = 0; Snd.play('grunt', { vol: 0.9 }); return }
         m.st = 'fly'; m.t = 0; m.pb = { t: 0, rate: 1, i: 0, said: {} }
-        Snd.play('kick', { vol: 1, rate: cost > 25 ? 0.85 : 1 }); fx.shake = 3
+        Snd.play('kick', { vol: 1, rate: cost > 25 ? 0.85 : 1 })
         if (m.level >= 3) m.kx = m.res.frames[0].k.x
       }
     } else if (m.st === 'fly') updPlayback(dt, sc)
@@ -582,13 +593,13 @@
     // ネット
     if (r.outcome === 'goal' && pb.t >= r.goalT && !pb.said.goal) {
       pb.said.goal = 1; const b = f.b
-      const tearIt = (m.tech.cost >= 14 || r.speed > 22)
+      const tearIt = (m.tech.cost >= 12 || r.speed > 22)
       m.net = { b: 0.1, x: b.x, y: b.y, tear: tearIt, tx: b.x, ty: clamp(b.y, 0.4, 1.8), tr: 0 }
       shout(T().r_goal); bigName(m.tech.name, true); Snd.play('crash', { vol: 0.7 }); Snd.play('roar', { vol: 1 }); if (tearIt) Snd.play('rip', { vol: 0.9, delay: 0.12 })
       fx.flash = 0.55; fx.shake = 10; fx.flashes = 2.5; confetti()
     }
     if (r.outcome === 'goal' && pb.t >= r.goalT + 0.1 && !pb.said.photo) { pb.said.photo = 1; takePhoto(true) }
-    fx.zoomT = r.outcome === 'goal' && pb.t > r.goalT - 0.45 ? 1.55 : 1
+    fx.zoomT = r.outcome === 'goal' && pb.t > r.goalT ? 1.35 : 1   // 寄るのは決まった後だけ（蹴る前と飛んでいる間は画角を変えない）
     if (m.net.b != null && r.outcome === 'goal') { m.net.b = Math.min(m.net.tear ? 0.6 : 0.9, m.net.b + dt * 3); if (m.net.tear) m.net.tr = Math.min(0.55, m.net.tr + dt * 2) }
     if (r.muriT > 0 && pb.t >= r.muriT && !pb.said.muri) { pb.said.muri = 1; bubble(T().r_muri, () => ballScreen(), 1.5); Snd.play('muri', { vol: 0.9 }); fx.shake = 2 }
     if (pb.t >= r.outT && !pb.said.out) {
@@ -722,13 +733,14 @@
     // 溜めの暗転と集中線
     if (fx.dark > 0.01) {
       const sp = M.match ? proj(cam, { x: sc.ball.x, y: 0.8, z: sc.ball.z }) : { x: W / 2, y: H * 0.7 }
-      const gg = ctx.createRadialGradient(sp.x, sp.y, 40, sp.x, sp.y, Math.max(W, H)); gg.addColorStop(0, 'rgba(0,0,0,0)'); gg.addColorStop(1, `rgba(0,0,0,${0.75 * fx.dark})`)
+      const gg = ctx.createRadialGradient(sp.x, sp.y, 40, sp.x, sp.y, Math.max(W, H)); gg.addColorStop(0, 'rgba(0,0,0,0)'); gg.addColorStop(1, `rgba(0,0,0,${0.5 * fx.dark})`)
       ctx.fillStyle = gg; ctx.fillRect(0, 0, W, H)
       ctx.strokeStyle = `rgba(255,255,255,${0.55 * fx.dark})`; ctx.lineWidth = 2
       const rr = HS.rng(Math.floor(vt * 20)); ctx.beginPath()
       for (let i = 0; i < 48; i++) { const a = rr() * Math.PI * 2, r1 = 120 + rr() * 80, r2 = Math.max(W, H); ctx.moveTo(sp.x + Math.cos(a) * r1, sp.y + Math.sin(a) * r1); ctx.lineTo(sp.x + Math.cos(a) * r2, sp.y + Math.sin(a) * r2) }
       ctx.stroke()
     }
+    if (M.mode === 'match' && M.match.st === 'tame' && M.match.sel >= 0 && M.match.t < 1.0) { ctx.save(); ctx.globalAlpha = clamp(1 - (M.match.t - 0.7) / 0.3, 0, 1); drawGhost(cam, sc); ctx.restore() }
     if (fx.flash > 0.01) { ctx.fillStyle = `rgba(255,255,255,${fx.flash * 0.7})`; ctx.fillRect(0, 0, W, H) }
     // 紙吹雪
     for (const p of fx.parts) { ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.a); ctx.fillStyle = p.c; ctx.fillRect(-p.r, -p.r * 0.4, p.r * 2, p.r * 0.8); ctx.restore() }
@@ -757,7 +769,7 @@
     // 試し撃ち（描いた技を練習場で再生）
     let bp = { x: EDIT_BALL.x, y: BR, z: EDIT_BALL.z }
     if (E && E.prev) {
-      const s = E.prev.sim, i = Math.min(s.frames.length - 1, Math.floor(E.prev.t * 60)); bp = s.frames[i].b
+      const s = E.prev.sim, i = clamp(Math.floor(E.prev.t * 60), 0, s.frames.length - 1); bp = s.frames[i].b   // くり返しの間（t<0）は蹴る前の位置
       if (E.prev.t > s.dur + 0.6) E.prev.t = -0.4   // くり返す
       if (s.muriT > 0 && E.prev.t >= s.muriT && E.prev.t < s.muriT + 1.2 && !E.prev.saidM) { E.prev.saidM = 1; bubble(T().r_muri, () => proj(cam, bp), 1) }
       if (E.prev.t < 0.1) E.prev.saidM = 0
@@ -788,10 +800,14 @@
     const pts = HS.toWorld(t.rel, { x: sc.ball.x, y: BR, z: sc.ball.z }, m.flip)
     ctx.lineCap = 'round'; ctx.lineJoin = 'round'
     // 地面の影の線（高さが分かる）
-    ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.lineWidth = 2.5; ctx.setLineDash([5, 6]); ctx.beginPath(); pts.forEach((p, i) => { const q = proj(cam, { x: p.x, y: 0, z: p.z }); if (q) i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y) }); ctx.stroke()
-    ctx.setLineDash([12, 8]); ctx.lineDashOffset = -vt * 40
-    ctx.strokeStyle = 'rgba(255,255,255,.75)'; ctx.lineWidth = 7; ctx.beginPath(); pts.forEach((p, i) => { const q = proj(cam, p); if (q) i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y) }); ctx.stroke()
-    ctx.strokeStyle = '#e0322b'; ctx.lineWidth = 4; ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset = 0
+    // 地面の影（高さが分かる）: 黒い太めの点線
+    ctx.strokeStyle = 'rgba(10,20,10,.6)'; ctx.lineWidth = 4; ctx.setLineDash([6, 6]); ctx.beginPath(); pts.forEach((p, i) => { const q = proj(cam, { x: p.x, y: 0, z: p.z }); if (q) i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y) }); ctx.stroke(); ctx.setLineDash([])
+    // 通り道: 黒い外枠＋白い縁＋赤の実線（芝の上でもスタンドの前でも読める）。流れる白い点で向きを見せる
+    const path = () => { ctx.beginPath(); pts.forEach((p, i) => { const q = proj(cam, p); if (q) i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y) }) }
+    path(); ctx.strokeStyle = 'rgba(0,0,0,.7)'; ctx.lineWidth = 13; ctx.stroke(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 9.5; ctx.stroke(); ctx.strokeStyle = '#e0322b'; ctx.lineWidth = 6; ctx.stroke()
+    ctx.setLineDash([2, 22]); ctx.lineDashOffset = -vt * 60; ctx.strokeStyle = 'rgba(255,255,255,.95)'; ctx.lineWidth = 4; ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset = 0
+    // 行き先の印
+    const e = proj(cam, pts[pts.length - 1]); if (e) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(e.x, e.y, 9, 0, 7); ctx.stroke(); ctx.strokeStyle = '#e0322b'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(e.x, e.y, 5, 0, 7); ctx.stroke() }
     if (t.muri >= 0) { const k = Math.floor(t.muri * (pts.length - 1)), q = proj(cam, pts[k]); if (q) { ctx.strokeStyle = '#ffb43a'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(q.x - 8, q.y - 8); ctx.lineTo(q.x + 8, q.y + 8); ctx.moveTo(q.x + 8, q.y - 8); ctx.lineTo(q.x - 8, q.y + 8); ctx.stroke() } }
   }
   function drawMatch(cam, sc, add) {
@@ -827,7 +843,7 @@
     const u = { x: -sc.ball.x, z: -sc.ball.z }, ul = Math.hypot(u.x, u.z); u.x /= ul; u.z /= ul
     const rgt = { x: u.z, z: -u.x }
     let sp = { pose: 'idle', ph: vt * 2, band: '#e0322b', bandTail: 1, col: '#e0322b', face: 'n', seed: 1 }
-    let back = 0.55, side = -0.55
+    let back = 0.45, side = -1.0
     if (m.st === 'tame') { const k = clamp((m.t - 0.75) / 0.4, 0, 1); back = lerp(1.7, 0.5, k); sp.pose = k > 0 ? 'run' : 'idle'; sp.ph = m.t * 18; if (k >= 0.85) { sp.pose = 'kick'; sp.k = (k - 0.85) / 0.15 * 0.45 } if (m.t < 0.75) { back = 1.7; sp.face = 'smug' } }
     else if (m.st === 'fly') { sp.pose = 'kick'; sp.k = clamp(0.45 + m.pb.t * 3, 0, 1); back = 0.55; if (m.res.cost >= 30 && m.pb.t > 0.35) { sp.pose = 'idle'; sp.rot = Math.min(1.5, (m.pb.t - 0.35) * 5); sp.face = 'o' } }
     else if (m.st === 'fall') { back = 0.6; sp.pose = 'kick'; sp.k = 0.3; sp.rot = Math.min(1.55, m.t * 5); sp.face = 'o'; sp.y0 = 0 }
@@ -893,12 +909,17 @@
     if (M.mode === 'match' || (M.match && M.match.st === 'over')) updMatch(dt)
   }
   let last = performance.now(), acc = 0
+  // 描画で例外が出てもループを止めない。?auto の時は画面に出す（実機の確認用）
+  let errShown = 0
+  function drawErr(e) { window.__drawErr = String(e && (e.stack || e.message) || e); try { ctx.restore() } catch (x) {} if (AUTO_Q && !errShown) { errShown = 1; const d = document.createElement('div'); d.style.cssText = 'position:fixed;left:8px;right:8px;top:120px;z-index:999;background:#fff;color:#b00;font:12px/1.4 monospace;white-space:pre-wrap;padding:8px'; d.textContent = window.__drawErr; document.body.appendChild(d) } }
   function frame() {
     const n = performance.now(); let d = (n - last) / 1000; last = n
     if (d > 0.25) d = 0.25
-    if (!dbgState.paused) { acc += d * dbgState.rate; while (acc >= 1 / 60) { update(1 / 60); acc -= 1 / 60 } }
-    else if (dbgState.steps > 0) { const k = dbgState.steps; dbgState.steps = 0; for (let i = 0; i < k; i++) update(1 / 60) }
-    draw()
+    // 例外が出てもループは止めない（止まると試合が進まなくなる）
+    const upd = () => { try { update(1 / 60) } catch (e) { drawErr(e) } }
+    if (!dbgState.paused) { acc += d * dbgState.rate; while (acc >= 1 / 60) { upd(); acc -= 1 / 60 } }
+    else if (dbgState.steps > 0) { const k = dbgState.steps; dbgState.steps = 0; for (let i = 0; i < k; i++) upd() }
+    try { draw() } catch (e) { drawErr(e) }
     requestAnimationFrame(frame)
   }
 
@@ -909,7 +930,7 @@
   requestAnimationFrame(frame)
   // 読み込み画面: 字が届くか 2.5 秒で消す（遅い回線でも 12 秒で必ず消す）
   const lb = $('loadBar').firstElementChild; lb.style.width = '40%'
-  const hideLoad = () => { const l = $('loading'); if (l.hidden) return; lb.style.width = '100%'; l.style.opacity = 0; setTimeout(() => { l.hidden = true; bgCache.clear() }, 350) }
+  const hideLoad = () => { const l = $('loading'); if (l.hidden) return; lb.style.width = '100%'; l.style.opacity = 0; l.style.pointerEvents = 'none'; setTimeout(() => { l.hidden = true; bgCache.clear() }, 350) }
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { lb.style.width = '80%'; setTimeout(hideLoad, 150) })
   setTimeout(hideLoad, 2500); setTimeout(hideLoad, 12000)
 
@@ -926,5 +947,20 @@
       mode: () => M.mode, photo: ok => takePhoto(ok), photoErr: () => window.__photoErr, st: () => M.match && M.match.st, vt: () => vt,
     },
   }
+  // 実機・シミュレーターの確認用（?auto=edit|sheet|match|end）。読み込み時に画面を進める
+  const AUTO = Q.get('auto')
+  if (AUTO) setTimeout(() => {
+    $('bStart').click()
+    const cam = camFor(EDIT_BALL, 'edit'), b = proj(cam, { x: 0, y: BR, z: -20 }), g = proj(cam, { x: 2.4, y: 1.4, z: 0 })
+    const ev = (type, x, y) => cv.dispatchEvent(new PointerEvent(type, { pointerId: 7, clientX: x, clientY: y, bubbles: true, pointerType: 'touch' }))
+    let i = 0; const n = 24
+    if (AUTO === 'edit') return
+    ev('pointerdown', b.x, b.y)
+    const tk = setInterval(() => {
+      i++; const k = i / n; ev('pointermove', b.x + (g.x - b.x) * k + Math.sin(k * Math.PI) * W * 0.25, b.y + (g.y - b.y) * k - Math.sin(k * Math.PI) * 40)
+      if (i >= n) { clearInterval(tk); ev('pointerup', g.x, g.y); if (AUTO === 'sheet') return
+        setTimeout(() => { $('bSave').click(); const L = window.HSBots.BOT_TECHS.mix(); L[1].name = '三日月バナナ弾'; L[2].name = '流星ドロップ砲'; L[3].name = '地獄ローリング撃'; window.hs.dbg.setTechs([techs[0], L[1], L[2], L[3]]); window.hs.dbg.start(+(Q.get('seed') || 5), AUTO === 'aim' ? null : 'mix'); if (AUTO === 'end') dbgState.rate = 6; if (AUTO === 'aim') setTimeout(() => chooseCard(+(Q.get('card') || 1)), 1500) }, 900) }
+    }, 30)
+  }, 1200)
   window.__hsReady = true
 })()

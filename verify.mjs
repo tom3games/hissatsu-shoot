@@ -4,6 +4,7 @@ import { MUTE_LAUNCH, muteContext } from './mute.mjs'
 import { chromium, webkit } from 'playwright'
 import { spawn } from 'node:child_process'
 import { mkdirSync } from 'node:fs'
+import { flow } from './flowcheck.mjs'
 const ROOT = import.meta.dirname
 mkdirSync(ROOT + '/shots', { recursive: true })
 const PORT = 5974
@@ -140,6 +141,12 @@ await t('描いた線の上をボールが飛ぶ（試し撃ちの球が線か�
   await p.evaluate(() => hs.dbg.resume())
   expect(d.max < 25 && d.n > 5, JSON.stringify(d)); return d
 })
+await t('試し撃ちを何周か見ていても描画が止まらない（2026-11-10 実機で2周目から固まった）', async () => {
+  await drawStroke(p, path(ball, goalHiL, 24, 80, 60), 500)
+  const v0 = await p.evaluate(() => hs.dbg.vt()); await p.waitForTimeout(4500)
+  const r = await p.evaluate(v0 => ({ dv: +(hs.dbg.vt() - v0).toFixed(1), err: window.__drawErr || null, t: +hs.M.edit.prev.t.toFixed(2) }), v0)
+  expect(r.dv > 3 && !r.err && !p.errs.length, JSON.stringify(r) + p.errs.join('|')); return r
+})
 await t('名前の候補3つ・大げさな名前・登録で札に入る・保存される', async () => {
   const r = await p.evaluate(() => ({ chips: document.querySelectorAll('#chips button').length, name: document.getElementById('nameIn').value }))
   await p.fill('#nameIn', 'テスト砲'); await p.click('#bSave'); await p.waitForTimeout(250)
@@ -179,8 +186,8 @@ await t('試合: 左右反転・同じ札をもう一度押すと蹴る・結果
   expect(f && o && (i === 1 || o === 'ref'), JSON.stringify([f, o, i])); return o
 })
 await t('試合: 同じ技を続けるとキーパーの「見」がたまる', async () => {
-  const r = await p.evaluate(() => { const G = hs.M.match.G, id = G.techs[1].id; return [hs.HS.readLevel(G.marks, id, true), hs.HS.readLevel(G.marks, G.techs[0].id, false)] })
-  expect(r[0] >= 1 && r[1] === 0, JSON.stringify(r)); return r
+  const r = await p.evaluate(() => { const G = hs.M.match.G, id = G.techs[1].id, m = G.marks[id]; const L = JSON.parse(JSON.stringify(G.marks)); hs.HS.addMark(L, id, true, [id]); hs.HS.addMark(L, id, true, [id]); return [m && m[1], (G.marks[G.techs[0].id] || [0, 0])[0], hs.HS.readLevel(L, id, true)] })
+  expect(r[0] > 0 && r[1] === 0 && r[2] >= 2, JSON.stringify(r)); return r
 })
 await t('試合: 変な時に押しても固まらない（蹴る連打・飛んでいる最中の札・反転・画面の連打・回転）', async () => {
   await p.waitForFunction(() => hs.dbg.st() === 'aim', null, { timeout: 8000 })
@@ -226,9 +233,15 @@ await t('もう一回で次の試合が始まる', async () => {
   const r = await p.evaluate(() => ({ mode: hs.M.mode, i: hs.M.match.G.i, us: hs.M.match.G.us }))
   expect(r.mode === 'match' && r.i === 0 && r.us === 0, JSON.stringify(r)); return r
 })
-await t('起動からここまでエラーなし', async () => { expect(p.errs.length === 0, p.errs.join('|')) })
+await t('起動からここまでエラーなし（描画の例外も）', async () => { const de = await p.evaluate(() => window.__drawErr || null); expect(p.errs.length === 0 && !de, p.errs.join('|') + de) })
 await p.close()
 
+// ---- 進行不能が無い（人の操作で最後まで・変な操作を混ぜる。Chromium と WebKit）
+{
+  const q = await open(browser, {}, '?seed=21', true)
+  await t('進行不能が無い Chromium: タイトル→描く→登録→8回→ハーフ→結果→もう一回→戻る', async () => { await flow(q); expect(!q.errs.length, q.errs.join('|')); const de = await q.evaluate(() => window.__drawErr || null); expect(!de, de) })
+  await q.close()
+}
 // ---- 同時に出ている文字の数（bot の1試合で 0.1 秒ごとに数える）
 {
   const q = await open(browser)
@@ -259,6 +272,8 @@ for (const [w, h, name] of [[360, 640, 'small'], [390, 844, 'phone'], [430, 932,
   await q.click('#bPlay'); await q.waitForFunction(() => hs.dbg.st() === 'aim'); await q.locator('.card').nth(0).click(); await q.waitForTimeout(150)
   views.aim = await fit(q); await q.screenshot({ path: `${ROOT}/shots/fit-${name}-aim.png` })
   const ballVis = await q.evaluate(() => { const c = hs.dbg.cam('match'), sc = hs.M.match.G.m.scenes[0], s = hs.HS.proj(c, { ...sc.ball, y: 0.11 }), cards = document.getElementById('actRow').getBoundingClientRect().top; return { by: Math.round(s.y), cards: Math.round(cards) } })
+  const gv = await q.evaluate(() => { const out = []; for (const sc of hs.M.match.G.m.scenes) { const c = hs.HS.fitCam({ ...sc.ball, y: 0 }, innerWidth, innerHeight, { yb: 0.66, yg: 0.3, back: 15, gw: 0.8, hmin: 6, hmax: 10, fovMin: 18 }), a = hs.HS.proj(c, { x: -3.66, y: 0, z: 0 }), d = hs.HS.proj(c, { x: 3.66, y: 0, z: 0 }), top = hs.HS.proj(c, { x: 0, y: 2.44, z: 0 }), sh = hs.HS.proj(c, { x: sc.ball.x, y: 2.1, z: sc.ball.z }), live = document.getElementById('board').getBoundingClientRect().bottom; out.push({ w: +((d.x - a.x) / innerWidth).toFixed(2), gap: Math.round(sh.y - Math.max(a.y, d.y)), top: Math.round(top.y - live) }) } return out })
+  await t(`${name}: どの場面でもゴールが見える（幅25%以上・蹴る人の頭より上・掲示板の下）`, async () => { expect(gv.every(g => g.w >= 0.25 && g.gap > 10 && g.top > 0), JSON.stringify(gv)); return gv.map(g => g.w).join(',') })
   await t(`${name}: 試合のボールが札とボタンに隠れない`, async () => { expect(ballVis.by < ballVis.cards - 8, JSON.stringify(ballVis)); return ballVis })
   await q.evaluate(() => { hs.dbg.bot('mix'); hs.dbg.rate(8) })
   for (let k = 0; k < 300; k++) { await q.waitForTimeout(120); const s = await q.evaluate(() => ({ half: !document.getElementById('half').hidden, mode: hs.M.mode })); if (s.half && !views.half) { views.half = await fit(q); await q.screenshot({ path: `${ROOT}/shots/fit-${name}-half.png` }); await q.click('#bSecond') } else if (s.half) await q.click('#bSecond'); if (s.mode === 'end') break }
@@ -303,6 +318,8 @@ await wp.tap('#bSave'); await wp.waitForTimeout(150); await wp.tap('#bPlay'); aw
 await wp.tap('.card'); await wp.tap('#bKick'); await wp.waitForTimeout(2500)
 await wp.screenshot({ path: `${ROOT}/shots/wk-fly.png` })
 await t('WebKit: 蹴ったあとも実際には無音', async () => { const r = await wp.evaluate(() => window.__muteOk()); expect(r, r) })
+{ const wq = await open(wb, { isMobile: true, hasTouch: true, deviceScaleFactor: 2, viewport: { width: 390, height: 664 } }, '?seed=8', true)
+  await t('進行不能が無い WebKit（Safari の見える高さ 390x664）', async () => { await flow(wq); expect(!wq.errs.length, wq.errs.join('|')) }); await wq.close() }
 await t('WebKit: エラーなし', async () => { expect(wp.errs.length === 0, wp.errs.join('|')) })
 await wb.close()
 server.kill()

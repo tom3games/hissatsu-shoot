@@ -10,7 +10,7 @@
 <meta property="og:type" content="website">
 <meta property="og:title" content="必殺シュートを描け！棒人間サッカー">
 <meta property="og:description" content="なぞった線が必殺シュートになる。技名だけは超大げさ。同じ技はキーパーに見切られる。">
-<meta property="og:image" content="https://tom3games.com/play/hissatsu-shoot/og.png?v=1">
+<meta property="og:image" content="https://tom3games.com/play/hissatsu-shoot/og.png?v=2">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:url" content="https://tom3games.com/play/hissatsu-shoot/">
@@ -24,14 +24,15 @@
   --brush:"Yuji Boku","Hiragino Mincho ProN","Yu Mincho",serif;--hand:"Klee One","Hiragino Maru Gothic ProN","Hiragino Sans",sans-serif;--dot:"DotGothic16","Hiragino Sans",monospace;--sans:"Hiragino Sans","Noto Sans JP",system-ui,sans-serif}
 html[lang=en]{--brush:"Arial Black","Helvetica Neue",Arial,sans-serif;--hand:"Helvetica Neue",Arial,system-ui,sans-serif}
 *{box-sizing:border-box;margin:0;padding:0}
-html{touch-action:manipulation;-webkit-text-size-adjust:100%;text-size-adjust:100%;background:var(--night)}
+html{overscroll-behavior:none;touch-action:manipulation;-webkit-text-size-adjust:100%;text-size-adjust:100%;background:var(--night)}
 body{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;font-family:var(--hand);color:var(--ink);overflow:hidden;height:100svh;background:var(--night)}
 button{font-family:inherit;color:inherit;border:0;background:none;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 input{font-family:inherit;-webkit-user-select:text;user-select:text}
 #cv{position:fixed;inset:0;width:100%;height:100%;z-index:0;touch-action:none;display:block}
 .view{position:fixed;inset:0;height:100svh;overflow:hidden;z-index:5;pointer-events:none}
 .view>*{pointer-events:auto}
-#corner{position:fixed;top:max(8px,env(safe-area-inset-top));right:8px;z-index:60;display:flex;gap:6px}
+#corner{position:fixed;top:max(8px,env(safe-area-inset-top));right:8px;z-index:60;display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;width:94px}
+#bBack{order:3;font-size:13px}
 #corner button{min-width:44px;height:44px;border-radius:22px;background:rgba(8,12,28,.55);color:#e9edf5;font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:center;padding:0 10px}
 #corner svg{width:20px;height:20px;fill:#e9edf5}
 
@@ -103,6 +104,8 @@ input{font-family:inherit;-webkit-user-select:text;user-select:text}
 #matchSp{flex:1;min-height:0;pointer-events:none}
 #clock{height:4px;margin:0 10px 6px;background:rgba(255,255,255,.18);border-radius:2px;overflow:hidden;pointer-events:none}
 #clock b{display:block;height:100%;background:var(--led);width:100%}
+#pickHint{align-self:flex-start;margin:0 8px 8px;padding:6px 12px;background:rgba(243,245,242,.95);border-left:5px solid var(--red);font-size:15px;font-weight:600;color:var(--ink);pointer-events:none;animation:nudge 1.2s ease-in-out infinite}
+@keyframes nudge{50%{transform:translateY(-3px)}}
 #actRow{display:flex;justify-content:flex-end;gap:8px;margin:0 8px 6px}
 #actRow button{min-height:46px;border-radius:4px;font-weight:600}
 #bFlip{padding:0 14px;background:rgba(243,245,242,.92);font-size:14px;border:1.5px solid #333}
@@ -118,8 +121,8 @@ input{font-family:inherit;-webkit-user-select:text;user-select:text}
 .card::before{content:"";position:absolute;top:4px;left:50%;width:10px;height:10px;margin-left:-5px;border-radius:50%;background:var(--red);box-shadow:inset -2px -2px 0 rgba(0,0,0,.25);z-index:2}
 
 /* 技名の大書き */
-#bigName{position:fixed;z-index:20;right:6vw;top:12svh;writing-mode:vertical-rl;font-family:var(--brush);font-size:min(17vw,10svh,84px);line-height:1;color:#fff;-webkit-text-stroke:3px var(--ink);paint-order:stroke fill;text-shadow:6px 6px 0 var(--red);pointer-events:none;white-space:nowrap;opacity:0}
-#bigName.en{writing-mode:horizontal-tb;right:auto;left:4vw;top:16svh;font-size:min(11vw,52px);white-space:normal;max-width:92vw;transform:rotate(-6deg)}
+#bigName{position:fixed;z-index:20;right:4vw;top:44svh;writing-mode:vertical-rl;font-family:var(--brush);font-size:min(12vw,5.6svh,60px);line-height:1;color:#fff;-webkit-text-stroke:3px var(--ink);paint-order:stroke fill;text-shadow:6px 6px 0 var(--red);pointer-events:none;white-space:nowrap;opacity:0}
+#bigName.en{writing-mode:horizontal-tb;right:auto;left:4vw;top:46svh;font-size:min(11vw,52px);white-space:normal;max-width:92vw;transform:rotate(-6deg)}
 #bigName.go{animation:slam .5s cubic-bezier(.2,1.4,.4,1) forwards}
 #bigName.out{animation:fadeOut .35s forwards}
 @keyframes slam{0%{opacity:0;transform:scale(2.4) rotate(8deg)}100%{opacity:1;transform:none}}
@@ -180,6 +183,7 @@ input{font-family:inherit;-webkit-user-select:text;user-select:text}
 <canvas id="cv"></canvas>
 <div id="loading"><div class="lane"><i></i></div><p id="loadTxt">芝を刈っています</p><div id="loadBar"><b></b></div></div>
 <div id="corner">
+  <button id="bBack" hidden></button>
   <button id="bLang" aria-label="language">EN</button>
   <button id="bMute" aria-label="sound"><svg viewBox="0 0 24 24"><path d="M3 9h4l6-5v16l-6-5H3z"/><path id="icoWave" d="M15 8.5a5 5 0 0 1 0 7v-2.2a2.6 2.6 0 0 0 0-2.6zM17 5a9 9 0 0 1 0 14v-2.4a6.6 6.6 0 0 0 0-9.2z"/></svg></button>
 </div>
@@ -213,6 +217,7 @@ input{font-family:inherit;-webkit-user-select:text;user-select:text}
   </div>
   <p id="live"></p>
   <div id="matchSp"></div>
+  <p id="pickHint" hidden></p>
   <div id="actRow" hidden><button id="bFlip"></button><button id="bKick" class="hot"></button></div>
   <div id="clock"><b></b></div>
   <div id="cards"></div>
@@ -262,12 +267,12 @@ input{font-family:inherit;-webkit-user-select:text;user-select:text}
   },15000);
 })();
 </script>
-<script src="tm.js?v=1" data-game="hissatsu-shoot"></script>
-<script src="sfx.js?v=1"></script>
-<script src="data.js?v=1"></script>
-<script src="logic.js?v=1"></script>
-<script src="game.js?v=1"></script>
-<script type="module" src="bots.js?v=1"></script>
-<script src="support.js?v=1" data-ja="スポーツドリンク" data-en="a sports drink"></script>
+<script src="tm.js?v=2" data-game="hissatsu-shoot"></script>
+<script src="sfx.js?v=2"></script>
+<script src="data.js?v=2"></script>
+<script src="logic.js?v=2"></script>
+<script src="game.js?v=2"></script>
+<script type="module" src="bots.js?v=2"></script>
+<script src="support.js?v=2" data-ja="スポーツドリンク" data-en="a sports drink"></script>
 </body>
 </html>

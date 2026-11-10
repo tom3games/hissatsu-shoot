@@ -47,7 +47,7 @@ const seed = await p.evaluate(name => {
   const L = HSBots.BOT_TECHS.mix(); L[1].name = '三日月バナナ弾'; L[2].name = '流星ドロップ砲'; L[3].name = '地獄ローリング撃'
   const mine = hs.techs()[0]; mine.name = name
   hs.dbg.setTechs([mine, L[1], L[2], L[3]])
-  for (let s = 1; s < 400; s++) { const m = hs.HS.makeMatch(s); const r = hs.HS.simulateShot(m.scenes[0], mine, false, 0); if (r.outcome === 'goal' && (mine.cost >= 14 || r.speed > 22) && m.scenes[1].type !== 'wall') { const r2 = hs.HS.simulateShot(m.scenes[1], mine, false, 3); if (r2.outcome === 'save') return s } }
+  for (let s = 1; s < 400; s++) { const m = hs.HS.makeMatch(s); const r = hs.HS.simulateShot(m.scenes[0], mine, false, 0); if (r.outcome === 'goal' && (mine.cost >= 12 || r.speed > 22) && m.scenes[1].type !== 'wall') { const r2 = hs.HS.simulateShot(m.scenes[1], mine, false, 3); if (r2.outcome === 'save') return s } }
   return 0
 }, NAME)
 console.log('seed', seed, await p.evaluate(() => { const t = hs.techs()[0]; return [t.kind, t.cost, t.speed.toFixed(1)] }))

@@ -25,6 +25,19 @@ export const BOT_TECHS = {
   reckless: () => withId([T.loop(), T.zigzag(), T.muri(), T.lob()]),
   idle: () => withId([T.lowCorner()]),
   random: () => withId([T.lowCorner(), T.banana(), T.dip(), T.zigzag()]),
+  human: seed => withId(humanTechs(seed)),
+}
+// 人が指で描いたような技（狙いがずれる・曲がりも高さもばらばら）
+function humanTechs(seed = 1) {
+  const r = HS.rng(seed * 977 + 13), out = []
+  // 練習場の試し撃ちで枠に入らない線は、人も描き直す（10回まで）
+  for (let k = 0, tries = 0; out.length < 4 && tries < 60; tries++) {
+    const ex = (r() * 2 - 1) * 3.4, ey = 0.1 + r() * 2.3, bend = (r() * 2 - 1) * 3.5, lift = r() < 0.4 ? r() * 4 : r() * 1, wig = r() < 0.25 ? 1 + r() : 0
+    const tech = HS.makeTech(curve(t => [t * 1.02, t * ex + Math.sin(Math.PI * t) * bend + Math.sin(t * Math.PI * 5) * wig, BR + Math.sin(Math.PI * t) * lift + t * ey]), 350 + r() * 700, 'h' + out.length)
+    const tryIt = HS.simulateShot({ ball: { x: 0, y: 0, z: -20 }, defs: [] }, tech, false, 0, { noKeeper: true })
+    if (tryIt.outcome === 'goal' || tries % 10 === 9) out.push(tech)
+  }
+  return out
 }
 export const TECHS = T
 // 人がやりそうな選び方
@@ -32,6 +45,13 @@ export function botChoose(kind, G, seed) {
   if (kind === 'idle') return null
   const sc = G.m.scenes[G.i]
   if (kind === 'same') return { id: G.techs[0].id, flip: false }
+  if (kind === 'human') {   // 半分は通り道を見て選び、半分は気分で押す。反転はあまり使わない
+    const r = HS.rng(seed * 31 + G.i * 7 + G.log.length * 3)
+    if (r() < 0.5) { const t = G.techs[Math.floor(r() * G.techs.length)]; return { id: t.id, flip: r() < 0.15 } }
+    let best = null
+    for (const t of G.techs) { const hit = HS.pathHitsDef(sc, t, false), lv = HS.readLevel(G.marks, t.id, false), e = hit * 10 + lv * 3 + r() * 4; if (!best || e < best.e) best = { e, id: t.id } }
+    return { id: best.id, flip: false }
+  }
   if (kind === 'random' || kind === 'reckless') { const r = HS.rng(seed * 31 + G.i * 7 + G.log.length); const t = G.techs[Math.floor(r() * G.techs.length)]; return { id: t.id, flip: r() < 0.5 } }
   // mix / straight3: 通り道にディフェンダーがいない・読まれていない・足が足りる、の順で選ぶ
   let best = null

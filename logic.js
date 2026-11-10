@@ -5,7 +5,7 @@
   const GW = 7.32, GH = 2.44, BR = 0.11            // ゴールの幅・高さ・ボールの半径
   const HALF = GW / 2
   const D_EDIT = 20                                  // 技を描く練習場の距離
-  const LEG_MAX = 100, LEG_HALF = 30                 // 足の体力（試合全体）とハーフタイムの回復
+  const LEG_MAX = 100, LEG_HALF = 40                 // 足の体力（試合全体）とハーフタイムの回復
   const ATTACKS = 8, CLOCK = 12                      // 攻めの回数・1回の持ち時間（秒）
 
   // ---- 乱数（同じ seed なら同じ試合）
@@ -39,9 +39,9 @@
   // 画面の大きさに合わせてカメラの高さと角度を選ぶ（ゴールの幅が画面の 45〜60%）
   function fitCam(ball, W, H, opt = {}) {
     const D = Math.hypot(ball.x, ball.z)
-    const want = W * clamp(0.62 * Math.pow(18 / D, 0.3), 0.42, 0.7)
+    const want = W * clamp((opt.gw || 0.62) * Math.pow(18 / D, 0.3), 0.42, 0.88)
     let best = null
-    for (let h = 1.6; h <= 4.4; h += 0.2) for (let th = 0.02; th <= 0.42; th += 0.02) {
+    for (let h = opt.hmin || 1.6; h <= (opt.hmax || 6); h += 0.2) for (let th = 0.02; th <= 0.42; th += 0.02) {
       const cam = makeCam(ball, W, H, { ...opt, h, pitch: th })
       if (!(cam.f > 0)) continue
       const a = proj(cam, { x: -HALF, y: 0, z: 0 }), b = proj(cam, { x: HALF, y: 0, z: 0 })
@@ -49,7 +49,7 @@
       const gw = Math.abs(b.x - a.x)
       // 焦点は縦の画角 40〜62 度
       const fov = 2 * Math.atan(H / 2 / cam.f) * 180 / Math.PI
-      const e = (gw - want) ** 2 + (fov < 40 ? (40 - fov) * 400 : 0) + (fov > 64 ? (fov - 64) * 400 : 0) + h * 2
+      const fmin = opt.fovMin || 40, e = (gw - want) ** 2 + (fov < fmin ? (fmin - fov) * 400 : 0) + (fov > 64 ? (fov - 64) * 400 : 0) + h * 2 + (h > 4.4 && !opt.hmin ? 1e6 : 0)
       if (!best || e < best.e) best = { e, cam }
     }
     return best.cam
@@ -136,8 +136,8 @@
     const flight = clamp(dur / 1000 * 1.6, len / 30, len / 10)  // 速く描いた線ほど速い
     const speed = len / flight
     // 足の負担: 長い・曲がる・速い・高い ほど重い
-    let cost = 6 + 10 * Math.max(0, len / D_EDIT - 1.03) + 3.2 * turn + 0.6 * Math.max(0, speed - 18) + 0.8 * Math.max(0, maxH - 3)
-    cost = Math.round(clamp(cost, 6, 70))
+    let cost = 5 + 8 * Math.max(0, len / D_EDIT - 1.03) + 2.6 * turn + 0.5 * Math.max(0, speed - 18) + 0.6 * Math.max(0, maxH - 3)
+    cost = Math.round(clamp(cost, 5, 60))
     if (muriHint >= 0) muri = Math.round(muriHint * (path.length - 1))
     const t = { rel, len, turn, maxTurn, muri: muri >= 0 ? muri / (path.length - 1) : -1, flips, maxH, endH, maxL, endF, speed, flight, cost, dur }
     t.kind = kindOf(t)
@@ -159,7 +159,8 @@
   function toWorld(rel, ball, flip) {
     let ux = -ball.x, uz = -ball.z; const D = Math.hypot(ux, uz); ux /= D; uz /= D
     const Rx = uz, Rz = -ux, sg = flip ? -1 : 1
-    return rel.map(p => ({ x: ball.x + ux * p.f * D + Rx * p.l * D * sg, y: p.y, z: ball.z + uz * p.f * D + Rz * p.l * D * sg }))
+    // 横は練習場（20m）と同じメートルで置く。距離が変わっても、狙ったゴールの隅にそのまま行く
+    return rel.map(p => ({ x: ball.x + ux * p.f * D + Rx * p.l * D_EDIT * sg, y: p.y, z: ball.z + uz * p.f * D + Rz * p.l * D_EDIT * sg }))
   }
 
   // ---- 技の名前（大げさな候補を3つ）
@@ -242,7 +243,7 @@
   function readLevel(marks, id, flip) { const m = marks[id] || [0, 0]; return Math.min(3, Math.floor(m[flip ? 1 : 0] + 1e-6)) }
   function addMark(marks, id, flip, ids) {
     for (const k of ids) { if (k === id) continue; const m = marks[k] || (marks[k] = [0, 0]); m[0] = Math.max(0, m[0] - 0.5); m[1] = Math.max(0, m[1] - 0.5) }
-    const m = marks[id] || (marks[id] = [0, 0]); m[flip ? 1 : 0] += 1; m[flip ? 0 : 1] += 0.5
+    const m = marks[id] || (marks[id] = [0, 0]); m[flip ? 1 : 0] += 0.75; m[flip ? 0 : 1] += 0.35
   }
 
   // ---- 1本のシュートを最後まで計算する（決定的。再生はこの結果をなぞる）
@@ -264,7 +265,11 @@
     if (sc.bento) level = Math.min(level, 0)
     // 見切った: 蹴る前から技の行き先へ寄っている
     if (level >= 3 && cross) { K.x = clamp(cross.x * 0.85, -HALF + 0.3, HALF - 0.3); K.target = { x: cross.x, y: cross.y } }
-    const reactAt = [0.62, 0.32, 0, 0][level] * Math.max(plen, 1)
+    // 最初の攻めのキーパーはあくびをしていて、読まれていなければ動かない
+    const reactAt = sc.idx === 0 && level === 0 ? Infinity : [0.75, 0.45, 0, 0][level] * Math.max(plen, 1)
+    // 前半は相手のキーパーが弱く、後半ほど強い（最初の攻めは決まりやすい）
+    // 読んだ（見が2つ以上）キーパーは場面に関係なく本気
+    const dif = level >= 2 || sc.idx == null ? 1 : sc.idx === 0 ? 0.2 : 0.6 + 0.4 * Math.min(1, sc.idx / 7)
     const defs = sc.defs.map(d => ({ ...d, y: 0, jump: 0, k: DEF_KIND[d.kind] }))
     const frames = []
     let s = 0, t = 0, b = { ...ball0 }, vel = null, outcome = null, hitBy = -1, goalT = -1, onPath = true, muriT = -1, bounces = 0, refT = -1
@@ -293,16 +298,16 @@
           // 0〜1段: いまの球の向きをまっすぐ伸ばしてゴールラインを予想する（曲がる球にだまされる）
           if ((level === 1 || !K.target) && !(level === 0 && K.locked)) { if (vel && vel.z > 0.5) { K.locked = true; const tt = -b.z / vel.z; K.target = { x: b.x + vel.x * tt, y: b.y + vel.y * tt - 4.9 * tt * tt } } }
           if (K.target) {
-            const tx = clamp(K.target.x, -HALF - 0.5, HALF + 0.5), dx = tx - K.x, mv = 2.4 * dt
+            const tx = clamp(K.target.x, -HALF - 0.5, HALF + 0.5), dx = tx - K.x, mv = 2.4 * dif * dt
             K.x += clamp(dx, -mv, mv)
             const eta = vel && vel.z > 0.3 ? -b.z / vel.z : 9
             if (!K.dive && eta < 0.36 && Math.abs(dx) > 0.45) { K.dive = 1e-6; K.diveDir = Math.sign(dx) }
           }
         }
-        if (K.dive) { K.dive = Math.min(1, K.dive + dt * 3.2); if (K.dive < 1 && K.target && (K.target.x - K.x) * K.diveDir > 0) K.x += K.diveDir * 3.0 * dt }
+        if (K.dive) { K.dive = Math.min(1, K.dive + dt * 3.2); if (K.dive < 1 && K.target && (K.target.x - K.x) * K.diveDir > 0) K.x += K.diveDir * 3.0 * dif * dt }
         // キーパーに当たったか（ゴールの少し手前で）
-        if (b.z > -1.2 && b.z < 0.2) {
-          const reachX = K.dive ? 0.85 : 0.55, reachY = K.dive ? 2.0 : 2.35
+        if (b.z > -1.2 && b.z < 0.2 && !opt.noKeeper) {
+          const reachX = (K.dive ? 0.85 : 0.55) * (0.6 + 0.4 * dif), reachY = K.dive ? 2.0 : 2.35
           const dx = Math.abs(b.x - K.x), lowDive = 0
           if (dx < reachX + lowDive && b.y < reachY + (K.dive ? 0 : 0.1) && !(K.dive && b.y > 1.6 && dx > 1.2)) { outcome = 'save'; hitBy = -2 }
         }
