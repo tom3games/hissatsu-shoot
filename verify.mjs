@@ -65,6 +65,16 @@ await t('バカな守り4種: 真ん中を狙うと当たって止まる・ど�
   const r = spawnSync(process.execPath, ['formcheck.mjs'], { cwd: ROOT, encoding: 'utf8' }); const o = JSON.parse(r.stdout.trim().split('\n').pop())
   expect(r.status === 0, r.stdout.slice(0, 400)); return { matches: o.matches, allFour: o.allFour, stats: o.stats, mound: o.mound }
 })
+// ---- v5（2026-11-11 本人「簡単すぎる。ディフェンスをもっと難しく」）
+await t('v5 守りの難しさ: 人の速さの bot（隅を狙ううまい人）は序盤8割以上入るが、5〜8本目は半分以上防がれる', async () => {
+  const r = spawnSync(process.execPath, ['simdef.mjs', '200'], { cwd: ROOT, encoding: 'utf8' }); const line = r.stdout.split('\n').find(l => l.startsWith('序盤')) || ''
+  const m = line.match(/序盤\(1〜3本目\) ゴール(\d+)%.*後半\(5〜8本目\) ゴール(\d+)%/)
+  expect(m && +m[1] >= 80 && +m[2] < 50, line); return line
+})
+await t('v5 守りの難しさ: 下書きの星の印と結果が合う（印が出ない線は、歩く・寄せる守りに当たらない）', async () => {
+  const r = spawnSync(process.execPath, ['formcheck.mjs'], { cwd: ROOT, encoding: 'utf8' }); const o = JSON.parse(r.stdout.trim().split('\n').pop())
+  expect(o.preview.n > 1000 && o.preview.bad <= o.preview.n * 0.01, JSON.stringify(o.preview)); return o.preview
+})
 await t('球が速い: 0.6秒で描いた線は毎秒28m以上・20mを0.8秒以内で飛ぶ（v3 は毎秒21m・1秒）', async () => {
   await import('./data.js'); await import('./logic.js'); const { TECHS } = await import('./bots.js'); const HS = globalThis.HS
   const out = []
@@ -263,6 +273,40 @@ await p.close()
   await t('蹴るまでカメラとキッカーが動かず、球は足先から（全場面・技4つ・反転あり/なし・押す時刻3通り）', async () => { expect(r.n >= 40 && r.moved === 0 && r.far === 0 && r.withFoot >= r.n * 0.8 && Object.keys(r.byType).length >= 6, JSON.stringify(r)); return { n: r.n, moved: r.moved, maxFoot: r.maxFoot, types: Object.keys(r.byType).length, flips: r.flips, timings: r.timings } })
   await q.close()
 }
+{
+  const q = await open(browser, {}, '?seed=7')
+  await q.evaluate(() => { hs.dbg.setTechs(HSBots.BOT_TECHS.mix()); hs.dbg.start(7) })
+  // 歩く守りがいる場面（4本目以降のバカな守り）を探して見る
+  const r = await q.evaluate(async () => {
+    const G = hs.M.match.G, i = G.m.scenes.findIndex(s => s.defs.some(d => d.mv)); if (i < 0) return { none: 1 }
+    hs.dbg.goto(i); const sc = hs.M.match.sc, k = sc.defs.findIndex(d => d.mv)
+    const wait = ms => new Promise(r => setTimeout(r, ms))
+    while (hs.dbg.st() !== 'aim') await wait(50)
+    const a = { ...hs.M.match.defs[k] }; await wait(700); const b = { ...hs.M.match.defs[k] }
+    const want = hs.HS.defAt(sc.defs[k], hs.M.match.mt)
+    return { i, kind: sc.defs[k].kind, moved: +Math.hypot(a.x - b.x, a.z - b.z).toFixed(2), off: +Math.hypot(b.x - want.x, b.z - want.z).toFixed(2), err: window.__drawErr || null }
+  })
+  await q.screenshot({ path: `${ROOT}/shots/v-walk.png` })
+  await t('v5 歩く守り: 狙っている間に横へ歩く（位置は時刻で決まる）・描画エラーなし', async () => { expect(!r.none && r.moved > 0.1 && r.off < 0.3 && !r.err && !q.errs.length, JSON.stringify(r) + q.errs.join('|')); return r })
+  // 5本目以降に守りに当てるとカウンターで失点
+  const c = await q.evaluate(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms))
+    const G = hs.M.match.G, i = G.m.scenes.findIndex((s, j) => j >= hs.HS.COUNTER_FROM && s.type === 'wall') >= 0 ? G.m.scenes.findIndex((s, j) => j >= hs.HS.COUNTER_FROM && s.type === 'wall') : G.m.scenes.findIndex((s, j) => j >= hs.HS.COUNTER_FROM && s.defs.length)
+    G.refUsed = true; G.leg = 100; G.marks = {}; hs.dbg.goto(i)
+    while (hs.dbg.st() !== 'aim') await wait(50)
+    hs.dbg.pause()
+    const m = hs.M.match, sc = m.sc, d = sc.defs.find(d => !d.mv && d.kind !== 'mound' && d.kind !== 'sleep') || sc.defs[0], D = Math.hypot(sc.ball.x, sc.ball.z), u = { x: -sc.ball.x / D, z: -sc.ball.z / D }, R = { x: u.z, z: -u.x }
+    const dx = d.x - sc.ball.x, dz = d.z - sc.ball.z, f = (dx * u.x + dz * u.z) / D, lat = dx * R.x + dz * R.z
+    const rel = []; for (let k = 0; k < 72; k++) { const t = k / 71; rel.push({ f: t * 1.02, l: lat * (t / f) / 20, y: 0.11 + Math.sin(Math.PI * Math.min(1, t / f / 2)) * 0.9 }) }
+    const T = hs.HS.makeTech(rel, 650, 'aim'); T.id = 'aimC'; T.name = 'まっすぐ'; G.techs[3] = T
+    const them0 = G.them, opp = G.m.oppAt.includes(G.i)
+    hs.dbg.choose(3); hs.dbg.kick(); hs.dbg.resume()
+    for (let k = 0; k < 200 && hs.dbg.st() !== 'concede'; k++) await wait(50)
+    return { i, out: m.res.outcome, counter: !!m.res.counter, d: G.them - them0 - (opp ? 1 : 0), st: hs.dbg.st(), live: document.getElementById('live').textContent }
+  })
+  await t('v5 カウンター: 5本目以降に守りに当てると1点取られる（実況「こぼれ球からカウンター」）', async () => { expect(c.out === 'block' && c.counter && c.d === 1 && c.st === 'concede' && /カウンター/.test(c.live), JSON.stringify(c)); return c })
+  await q.close()
+}
 // ---- バカな守りに本物のクリックで蹴る（当たると止まって跳ね返る・埋まる／よけると決まる）
 {
   const q = await open(browser, {}, '?seed=7')
@@ -271,27 +315,37 @@ await p.close()
   for (const ty of ['tower', 'kata', 'sand', 'pyr']) for (const mode of ['hit', 'dodge']) {
     await q.evaluate(([ty, mode]) => {
       const G = hs.M.match.G, i = G.m.scenes.findIndex(s => s.type === ty); G.marks = {}; G.refUsed = true; G.leg = 100
-      if (mode === 'hit') {   // 守りの真ん中を通る線を4枚目に入れる
-        const sc = G.m.scenes[i], d = sc.defs.find(d => hs.HS.DEF_KIND[d.kind].funny && d.kind !== 'squat'), D = Math.hypot(sc.ball.x, sc.ball.z), u = { x: -sc.ball.x / D, z: -sc.ball.z / D }, R = { x: u.z, z: -u.x }
-        const dx = d.x - sc.ball.x, dz = d.z - sc.ball.z, f = (dx * u.x + dz * u.z) / D, lat = dx * R.x + dz * R.z, hh = { tower: 1.6, kata: 1.3, mound: 0.11, pyr: 1.0 }[d.kind]
-        const rel = []; for (let k = 0; k < 72; k++) { const t = k / 71; rel.push({ f: t * 1.02, l: lat * (t / f) / 20, y: Math.max(0.11, 0.11 + Math.sin(Math.PI * Math.min(1, t / f / 2)) * (hh - 0.11)) }) }
-        const T = hs.HS.makeTech(rel, 650, 'aim'); T.id = 'aim' + i; T.name = 'まっすぐ'; G.techs[3] = T
-      } else G.techs[3] = HSBots.BOT_TECHS.mix()[3]
+      if (mode === 'dodge') G.techs[3] = HSBots.BOT_TECHS.mix()[3]
       hs.dbg.goto(i)
     }, [ty, mode])
     await q.waitForFunction(() => hs.dbg.st() === 'aim', null, { timeout: 8000 })
+    // 時間を止めて、いま蹴った時の結果を調べる（歩く守りは蹴る時刻で位置が変わる。止めている間に押すので時刻は同じ）
     const pk = await q.evaluate(mode => {
-      const m = hs.M.match, sc = m.sc
-      for (const k of [3, 0, 1, 2]) for (const flip of [false, true]) { const t = m.G.techs[k], r = hs.HS.simulateShot(sc, t, flip, hs.HS.readLevel(m.G.marks, t.id, flip)); if (mode === 'hit' ? r.outcome === 'block' && hs.HS.DEF_KIND[r.hitKind].funny : r.outcome === 'goal') return { k, flip } }
+      hs.dbg.pause()
+      const m = hs.M.match, sc = m.sc, G = m.G, t0 = m.mt + 1.15
+      if (mode === 'hit') {   // 守りの真ん中を通る線を4枚目に入れる（歩く守りは、球が着く時の位置を狙う）
+        const d = sc.defs.find(d => hs.HS.DEF_KIND[d.kind].funny && d.kind !== 'squat'), D = Math.hypot(sc.ball.x, sc.ball.z), u = { x: -sc.ball.x / D, z: -sc.ball.z / D }, R = { x: u.z, z: -u.x }
+        const hh = { tower: 1.6, kata: 1.3, mound: 0.11, pyr: 1.0 }[d.kind]
+        let p = hs.HS.defAt(d, t0), T
+        for (let it = 0; it < 3; it++) {
+          const dx = p.x - sc.ball.x, dz = p.z - sc.ball.z, f = (dx * u.x + dz * u.z) / D, lat = dx * R.x + dz * R.z
+          const rel = []; for (let k = 0; k < 72; k++) { const t = k / 71; rel.push({ f: t * 1.02, l: lat * (t / f) / 20, y: Math.max(0.11, 0.11 + Math.sin(Math.PI * Math.min(1, t / f / 2)) * (hh - 0.11)) }) }
+          T = hs.HS.makeTech(rel, 650, 'aim'); T.id = 'aim' + sc.idx; T.name = 'まっすぐ'
+          p = hs.HS.defAt(d, t0 + Math.hypot(dx, dz) / hs.HS.shotSpeed(sc, T))
+        }
+        G.techs[3] = T
+      }
+      for (const k of [3, 0, 1, 2]) for (const flip of [false, true]) { const t = G.techs[k], r = hs.HS.simulateShot(sc, t, flip, hs.HS.readLevel(G.marks, t.id, flip), { t0 }); if (mode === 'hit' ? r.outcome === 'block' && hs.HS.DEF_KIND[r.hitKind].funny : r.outcome === 'goal') return { k, flip, t0, walk: !!sc.defs.find(d => d.mv) } }
       return null
     }, mode)
-    if (!pk) { rows.push({ ty, mode, none: 1 }); continue }
-    await q.locator('.card').nth(pk.k).click(); if (pk.flip) await q.click('#bFlip'); await q.waitForTimeout(120)
-    const ghost = await q.evaluate(() => { const m = hs.M.match; return hs.HS.pathHitInfo(m.sc, m.G.techs[m.sel], m.flip).first })
+    if (!pk) { rows.push({ ty, mode, none: 1 }); await q.evaluate(() => hs.dbg.resume()); continue }
+    await q.locator('.card').nth(pk.k).click(); if (pk.flip) await q.click('#bFlip')
+    const ghost = await q.evaluate(t0 => { const m = hs.M.match; return hs.HS.pathHitInfo(m.sc, m.G.techs[m.sel], m.flip, null, t0).first }, pk.t0)
     await q.locator('.card').nth(pk.k).click()
+    await q.evaluate(() => hs.dbg.resume())
     await q.waitForFunction(() => ['after', 'concede'].includes(hs.dbg.st()), null, { timeout: 15000 })
     const r = await q.evaluate(() => { const r = hs.M.match.res, f = r.frames, o = f[Math.min(f.length - 1, Math.round(r.outT * 60))].b, e = f[f.length - 1].b; return { out: r.outcome, hk: r.hitKind, back: +(o.z - e.z).toFixed(2), moved: +Math.hypot(e.x - o.x, e.z - o.z).toFixed(2), err: window.__drawErr || null } })
-    rows.push({ ty, mode, ghost, ...r })
+    rows.push({ ty, mode, ghost, walk: pk.walk, ...r })
   }
   const bad = rows.filter(r => r.none || r.err || (r.mode === 'hit' ? !(r.out === 'block' && r.ghost >= 0 && (r.hk === 'mound' ? r.moved < 1.5 : r.back > 0.3)) : r.out !== 'goal'))
   await t('バカな守り: 本物のクリックで当てると止まる（タワー・肩車・ピラミッドは跳ね返る、砂山は埋まる。下書きに「ぶつかる」印）・よけると決まる', async () => { expect(!bad.length && !q.errs.length, JSON.stringify(bad) + q.errs.join('|')); return rows.map(r => `${r.ty}/${r.mode}:${r.out}${r.hk ? '/' + r.hk : ''}`).join(' ') })

@@ -23,6 +23,14 @@ function dodgers() {
   return out
 }
 const DODGE = dodgers()
+let previewN = 0, previewBad = 0
+// 歩く守りが、狙いの線が着く時にちょうど元の位置へ来る蹴る時刻
+function arriveAtBase(sc, d, tech) {
+  if (!d.mv) return 0
+  const dist = Math.hypot(d.x0 - sc.ball.x, d.z0 - sc.ball.z), arr = dist / HS.shotSpeed(sc, tech), per = 2 * Math.PI / d.mv.w
+  let tau = ((Math.PI - d.mv.ph) / d.mv.w) % per; while (tau < arr) tau += per
+  return tau - arr
+}
 const fails = [], stats = { tower: [0, 0, 0], kata: [0, 0, 0], sand: [0, 0, 0], pyr: [0, 0, 0] }
 let matches = 0, allFour = 0, threeInRow = 0
 for (let seed = 1; seed <= 400; seed++) {
@@ -37,11 +45,19 @@ for (let seed = 1; seed <= 400; seed++) {
     const st = stats[sc.type]; st[0]++
     const main = sc.defs.find(d => HS.DEF_KIND[d.kind].funny && d.kind !== 'squat')
     const h = { tower: 1.5, kata: 1.3, sand: BR, pyr: 1.0 }[sc.type]
-    const r = HS.simulateShot({ ...sc, idx: 3 }, aimAt(sc, main, h), false, 0)
+    const aim = aimAt(sc, main, h), t0 = arriveAtBase(sc, main, aim)
+    const r = HS.simulateShot({ ...sc, idx: 3 }, aim, false, 0, { t0 })
     if (r.outcome === 'block' && r.hitKind === main.kind) st[1]++
     else fails.push(`${sc.type} seed${seed}: 真ん中を狙っても ${r.outcome}/${r.hitKind}`)
     // 抜け道: 読まれていない（level 0）キーパー・後半の強さで1本でも決まるか
-    const ok = DODGE.some(t => HS.simulateShot({ ...sc, idx: 3 }, t, false, 0).outcome === 'goal' || HS.simulateShot({ ...sc, idx: 3 }, t, true, 0).outcome === 'goal')
+    // 歩く守りは、蹴る時刻を8通り試してどれか1つで抜ければよい（人は動きを見て蹴る時を選べる）
+    const ts = sc.defs.some(d => d.mv) ? [0, 0.4, 0.8, 1.2, 1.6, 2.0, 2.4, 2.8] : [0]
+    const ok = ts.some(t0 => DODGE.some(t => HS.simulateShot({ ...sc, idx: 3 }, t, false, 0, { t0 }).outcome === 'goal' || HS.simulateShot({ ...sc, idx: 3 }, t, true, 0, { t0 }).outcome === 'goal'))
+    // 下書きの印と結果が合うか: 印が出ない（当たらない）と出た線は、歩く守りに当たらない
+    if (sc.defs.some(d => d.mv)) for (const t of DODGE.slice(0, 120)) for (const t0 of [0.3, 1.1, 1.9]) {
+      if (HS.pathHitsDef(sc, t, false, t0) > 0) continue
+      previewN++; const rr = HS.simulateShot({ ...sc, idx: 3 }, t, false, 0, { t0 }); if (rr.outcome === 'block' && sc.defs[rr.hitBy].mv) previewBad++
+    }
     if (ok) st[2]++; else fails.push(`${sc.type} seed${seed}: よける線が1本も決まらない`)
   }
 }
@@ -68,7 +84,7 @@ for (let seed = 1; seed <= 200 && moundN < 30; seed++) {
     }
   }
 }
-const out = { matches, allFour, threeInRow, stats, mound: { n: moundN, lowBuried: moundLow, highClears: moundHigh }, pyr: { n: pyrN, edgeLowMidHigh: pyrEdge }, fails: fails.slice(0, 8), nfail: fails.length }
+const out = { preview: { n: previewN, bad: previewBad }, matches, allFour, threeInRow, stats, mound: { n: moundN, lowBuried: moundLow, highClears: moundHigh }, pyr: { n: pyrN, edgeLowMidHigh: pyrEdge }, fails: fails.slice(0, 8), nfail: fails.length }
 console.log(JSON.stringify(out))
-const good = allFour === matches && threeInRow === 0 && fails.length === 0 && moundLow === moundN && moundHigh >= moundN * 0.9 && pyrEdge === pyrN
+const good = previewBad <= previewN * 0.01 && allFour === matches && threeInRow === 0 && fails.length === 0 && moundLow === moundN && moundHigh >= moundN * 0.9 && pyrEdge === pyrN
 process.exit(good ? 0 : 1)

@@ -41,7 +41,12 @@ function humanTechs(seed = 1) {
 }
 export const TECHS = T
 // 人がやりそうな選び方
-export function botChoose(kind, G, seed) {
+export function botChoose(kind, G, seed, t0) {
+  const c = botChoose0(kind, G, seed, t0)
+  if (c && t0 != null) c.t0 = t0
+  return c
+}
+function botChoose0(kind, G, seed, t0) {
   if (kind === 'idle') return null
   const sc = G.m.scenes[G.i]
   if (kind === 'same') return { id: G.techs[0].id, flip: false }
@@ -49,14 +54,14 @@ export function botChoose(kind, G, seed) {
     const r = HS.rng(seed * 31 + G.i * 7 + G.log.length * 3)
     if (r() < 0.5) { const t = G.techs[Math.floor(r() * G.techs.length)]; return { id: t.id, flip: r() < 0.15 } }
     let best = null
-    for (const t of G.techs) { const hit = HS.pathHitsDef(sc, t, false), lv = HS.readLevel(G.marks, t.id, false), e = hit * 10 + lv * 3 + r() * 4; if (!best || e < best.e) best = { e, id: t.id } }
+    for (const t of G.techs) { const hit = HS.pathHitsDef(sc, t, false, t0), lv = HS.readLevel(G.marks, t.id, false), e = hit * 10 + lv * 3 + r() * 4; if (!best || e < best.e) best = { e, id: t.id } }
     return { id: best.id, flip: false }
   }
   if (kind === 'random' || kind === 'reckless') { const r = HS.rng(seed * 31 + G.i * 7 + G.log.length); const t = G.techs[Math.floor(r() * G.techs.length)]; return { id: t.id, flip: r() < 0.5 } }
   // mix / straight3: 通り道にディフェンダーがいない・読まれていない・足が足りる、の順で選ぶ
   let best = null
   for (const t of G.techs) for (const flip of [false, true]) {
-    const hit = HS.pathHitsDef(sc, t, flip), lv = HS.readLevel(G.marks, t.id, flip)
+    const hit = HS.pathHitsDef(sc, t, flip, t0), lv = HS.readLevel(G.marks, t.id, flip)
     const afford = t.cost <= G.leg - (HS.ATTACKS - G.i - 1) * 8 ? 0 : 1
     const e = hit * 10 + lv * 3 + afford * 6 + t.cost * 0.02
     if (!best || e < best.e) best = { e, id: t.id, flip }

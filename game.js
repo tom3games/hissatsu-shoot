@@ -198,6 +198,7 @@
   // 体の各点（m・腰が原点に近い）。pose ごとに組む
   // 蹴る瞬間の足先（体の中心から右へ 0.3m・高さは球の中心）。キッカーはこの点が球に重なる所に立つ
   const KICK_FOOT = { x: 0.3, y: 0.11 }, KICK_HIT = 0.6
+  const TAME = 1.15   // 蹴ると決めてから球が足を離れるまでの秒（溜め）
   function skel(pose, ph, o = {}) {
     const S = (x, y) => ({ x, y })
     const sw = Math.sin(ph), cw = Math.cos(ph)
@@ -491,11 +492,13 @@
     fx.stop = 0; fx.wp.length = 0; fx.words.length = 0; fx.rings.length = 0
     // バカな守りの場面は、最初に守りへ寄って見せてから引く（札が押せるようになる前に必ず元の画角に戻る）
     m.funny = HS.FUNNY.includes(sc.type); m.introLen = m.funny ? 1.9 : 0.7
+    m.mt = 0; m.saidWalk = false
     m.st = 'intro'; m.t = 0; m.sel = -1; m.flip = false; m.clock = HS.CLOCK; m.pb = null; m.net = {}; m.trail = []; m.botT = 0
     m.kx = clamp(sc.ball.x * 0.12, -1.2, 1.2); m.defs = sc.defs.map(d => ({ ...d, jump: 0 })); m.shooter = { pose: 'idle', fall: 0 }
     m.dog = sc.dog ? { x: -26, z: sc.ball.z * 0.5 } : null
     $('actRow').hidden = true; $('pickHint').hidden = true; renderCards(); updateLed()
-    const lines = T().live[sc.type] || ['']
+    const walker = sc.defs.find(d => d.mv && HS.DEF_KIND[d.kind].funny)
+    const lines = (walker && T().walkLive[walker.kind]) || T().live[sc.type] || ['']
     live(sc.bento ? T().bento : sc.dog ? T().dog : lines[sc.idx % lines.length])
   }
   // 掲示板は攻めの頭と結果が出た時だけ書き換える（蹴った瞬間に点や時間が先に変わって結果がばれていた）
@@ -535,7 +538,8 @@
     const m = M.match; if (!m || m.st !== 'aim' || m.sel < 0) return
     const tech = m.G.techs[m.sel], sc = sceneNow()
     const level = HS.readLevel(m.G.marks, tech.id, m.flip)
-    const res = HS.playAttack(m.G, { id: tech.id, flip: m.flip })
+    // 歩く守りは、溜め（TAME 秒）の後に球が足を離れた時刻から動きを数える
+    const res = HS.playAttack(m.G, { id: tech.id, flip: m.flip, t0: m.mt + TAME })
     m.res = res; m.tech = tech; m.lastTech = tech.id; m.level = level; m.lastFlip = m.flip
     m.st = 'tame'; m.t = 0; $('actRow').hidden = true
     for (const el of $('cards').children) el.disabled = true
@@ -555,9 +559,9 @@
     const m = M.match, r = m.res
     m.shown = { us: m.G.us, them: m.G.them }
     updateLed()
-    if (r.oppGoal || r.outcome === 'fall' || r.outcome === 'timeout') {
+    if (r.oppGoal || r.counter || r.outcome === 'fall' || r.outcome === 'timeout') {
       m.st = 'concede'; m.t = 0
-      live(r.outcome === 'fall' || r.outcome === 'timeout' ? T().counter : T().oppGoal, 1.6)
+      live(r.outcome === 'fall' || r.outcome === 'timeout' ? T().counter : r.counter ? T().counterBlock : T().oppGoal, 1.6)
       Snd.play('whistleS', { vol: 0.6 }); setTimeout(() => Snd.play('ooh', { vol: 0.6 }), 250)
       return
     }
@@ -576,24 +580,31 @@
   function updMatch(dt) {
     const m = M.match; if (!m) return
     const sc = sceneNow() || m.G.m.scenes[HS.ATTACKS - 1]
-    m.t += dt
+    m.t += dt; m.mt = (m.mt || 0) + dt
+    // 歩く守り: 蹴るまでは時刻で決まる位置（蹴った後は結果の frames の位置）
+    if (m.st === 'intro' || m.st === 'aim' || m.st === 'tame') sc.defs.forEach((d, k) => { if (d.mv && m.defs[k]) { const p = HS.defAt(d, m.mt); m.defs[k].x = p.x; m.defs[k].z = p.z } })
     if (m.dog) { m.dog.x += dt * 7; if (m.dog.x > 30) m.dog = null }
     for (const d of m.defs || []) if (d.kind === 'spin') d.ph = (d.ph || 0) + dt * 6
     if (m.st === 'intro') {
       fx.zoomT = m.funny && m.t < m.introLen - 0.75 ? 2.1 : 1
-      if (m.t > m.introLen) { m.st = 'aim'; m.t = 0; fx.zoom = 1; fx.zoomT = 1; renderCards(); if (!tut.card) live(T().tut2, 3) }
+      if (m.t > m.introLen) {
+        m.st = 'aim'; m.t = 0; fx.zoom = 1; fx.zoomT = 1; renderCards(); if (!tut.card) live(T().tut2, 3)
+        // 歩くバカな守りは、狙い始めに一言（「右！…いや左！」）
+        const wi = sc.defs.findIndex(d => d.mv && HS.DEF_KIND[d.kind].funny), wl = wi >= 0 && T().walk[sc.defs[wi].kind]
+        if (wl && !m.saidWalk && tut.card) { m.saidWalk = true; live(null); bubble(wl[sc.idx % wl.length], () => defHead(wi), 1.4) }   // 実況は消してから（同時に出る文字は2つまで）
+      }
     }
     else if (m.st === 'aim') {
       { const ph = $('pickHint'), want = m.sel < 0; if (ph.hidden === want) ph.hidden = !want }
     m.clock -= dt; $('clock').firstElementChild.style.width = clamp(m.clock / HS.CLOCK, 0, 1) * 100 + '%'
-      if (m.bot) { m.botT += dt; if (m.botT > 0.9 && m.sel < 0) { const c = window.HSBots.botChoose(m.bot, m.G, m.G.m.seed); if (!c) m.botT = -99; else { m.sel = m.G.techs.findIndex(t => t.id === c.id); m.flip = c.flip; renderCards(); updateLed() } } else if (m.botT > 1.7 && m.sel >= 0) kick() }
+      if (m.bot) { m.botT += dt; if (m.botT > 0.9 && m.sel < 0) { const c = window.HSBots.botChoose(m.bot, m.G, m.G.m.seed, m.mt + 0.8 + TAME); if (!c) m.botT = -99; else { m.sel = m.G.techs.findIndex(t => t.id === c.id); m.flip = c.flip; renderCards(); updateLed() } } else if (m.botT > 1.7 && m.sel >= 0) kick() }
       if (m.clock <= 0) timeoutAttack()
     } else if (m.st === 'tame') {
       // 溜め → 助走
       const cost = m.res.cost || 0
       if (m.t > 0.75) { fx.dark = Math.max(0, fx.dark - dt * 3) }
       if (m.t > 0.75 && !m.ran) { m.ran = true }
-      if (m.t > 1.15) {
+      if (m.t >= TAME - 1e-6) {
         m.ran = false
         if (m.res.outcome === 'fall') { m.st = 'fall'; m.t = 0; Snd.play('grunt', { vol: 0.9 }); return }
         m.st = 'fly'; m.t = 0; m.pb = { t: 0, rate: 1, i: 0, said: {} }
@@ -625,7 +636,7 @@
     const n = r.frames.length, i = Math.min(n - 1, Math.floor(pb.t * 60)); pb.i = i
     const f = r.frames[i]
     m.kx = f.k.x; m.kdive = f.k.dive; m.kdir = f.k.dir
-    f.d.forEach((d, k) => { if (m.defs[k]) { m.defs[k].x = d[0]; m.defs[k].jump = d[1] } })
+    f.d.forEach((d, k) => { if (m.defs[k]) { m.defs[k].x = d[0]; m.defs[k].jump = d[1]; if (d[2] != null) m.defs[k].z = d[2] } })
     // ネット
     if (r.outcome === 'goal' && pb.t >= r.goalT && !pb.said.goal) {
       pb.said.goal = 1; const b = f.b
@@ -649,14 +660,14 @@
       if (o === 'save') { bubble(m.level >= 2 ? T().r_saveRead : pick(T().r_save), () => keeperHead(), 1.6); Snd.play('catch', { vol: 1 }); Snd.play('ooh', { vol: 0.6 }); fx.shake = 3 }
       else if ((o === 'block' || o === 'ref') && r.hitKind && T().hit[r.hitKind]) {   // バカな守りに当たった: 崩れる・埋まる・つぶれる。観客が笑う
         const hk = r.hitKind, h = defHead(r.hitBy)
-        bubble(pick(T().hit[hk]), () => defHead(r.hitBy), 1.6); fx.shake = 7; fx.stop = 0.09
+        bubble(r.lunge > 0.35 ? pick(T().read) : pick(T().hit[hk]), () => defHead(r.hitBy), 1.6); fx.shake = 7; fx.stop = 0.09
         word(T().ono[hk], h && { x: h.x + (h.x < W / 2 ? 100 : -100), y: h.y + 60 }, { size: 46, col: hk === 'mound' ? '#f3d58a' : '#ffe14a', life: 0.9 })
         if (hk === 'mound') { Snd.play('sand', { vol: 1 }); Snd.play('squeak', { vol: 0.5, delay: 0.25 }); sandSpray(m.defs[r.hitBy], f.b) }
         else if (hk === 'tower' || hk === 'pyr') { Snd.play('block', { vol: 0.9 }); Snd.play('topple', { vol: 1, delay: 0.12 }); Snd.play('grunt', { vol: 0.8, delay: 0.3 }) }
         else { Snd.play('block', { vol: 1 }); Snd.play('boing', { vol: 0.6, delay: 0.08 }); Snd.play('grunt', { vol: 0.7, delay: 0.2 }) }
         Snd.play('giggle', { vol: 0.55, delay: 0.55 })
       }
-      else if (o === 'block' || o === 'ref') { bubble(pick(T().r_block), () => defHead(r.hitBy), 1.3); Snd.play('block', { vol: 1 }); Snd.play('boing', { vol: 0.5, delay: 0.08 }); fx.shake = 4 }
+      else if (o === 'block' || o === 'ref') { bubble(r.lunge > 0.35 ? pick(T().read) : pick(T().r_block), () => defHead(r.hitBy), 1.3); Snd.play('block', { vol: 1 }); Snd.play('boing', { vol: 0.5, delay: 0.08 }); fx.shake = 4 }
       else if (o === 'post') { bubble(T().r_post, () => ballScreen(), 1.3); Snd.play('thud', { vol: 1, rate: 1.4 }); Snd.play('ooh', { vol: 0.8 }); fx.shake = 5 }
       else if (o === 'miss') { bubble(pick(T().r_miss), () => ballScreen(), 1.3); Snd.play('ooh', { vol: 0.7 }) }
       else if (o === 'short') { bubble(T().r_short, () => ballScreen(), 1.3); Snd.play('squeak', { vol: 0.6 }) }
@@ -877,7 +888,7 @@
     // 行き先の印
     const e = proj(cam, pts[pts.length - 1]); if (e) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(e.x, e.y, 9, 0, 7); ctx.stroke(); ctx.strokeStyle = '#e0322b'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(e.x, e.y, 5, 0, 7); ctx.stroke() }
     // 守りにぶつかる所に印（ギザギザの星）
-    const hi = HS.pathHitInfo(sc, t, m.flip, pts)
+    const hi = HS.pathHitInfo(sc, t, m.flip, pts, (m.mt || 0) + (m.st === 'tame' ? TAME - m.t : TAME))
     if (hi.first >= 0) { const q = proj(cam, pts[hi.first]); if (q) { const R1 = 13, R2 = 6; ctx.beginPath(); for (let k = 0; k < 16; k++) { const a = k / 16 * Math.PI * 2 + vt * 2, rr = k % 2 ? R2 : R1; k ? ctx.lineTo(q.x + Math.cos(a) * rr, q.y + Math.sin(a) * rr) : ctx.moveTo(q.x + Math.cos(a) * rr, q.y + Math.sin(a) * rr) } ctx.closePath(); ctx.fillStyle = '#ffb43a'; ctx.fill(); ctx.strokeStyle = '#141318'; ctx.lineWidth = 2; ctx.stroke() } }
     if (t.muri >= 0) { const k = Math.floor(t.muri * (pts.length - 1)), q = proj(cam, pts[k]); if (q) { ctx.strokeStyle = '#ffb43a'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(q.x - 8, q.y - 8); ctx.lineTo(q.x + 8, q.y + 8); ctx.moveTo(q.x + 8, q.y - 8); ctx.lineTo(q.x - 8, q.y + 8); ctx.stroke() } }
   }
@@ -897,6 +908,16 @@
     let khead = null
     add({ x: kx, y: 1, z: kz }, () => { khead = stick(ctx, cam, kx, kz, kp); drawMarks(cam, khead) })
     keeperHead = () => { const p = proj(cam, { x: m.kx, y: 2.1, z: kz }); return p && { x: p.x, y: p.y - 6 } }
+    // 歩く守りの通り道（地面の白い点線と両端の矢じり）。描く前に動く範囲が分かる
+    if (m.st === 'intro' || m.st === 'aim' || m.st === 'tame') for (const d of sc.defs) {
+      if (!d.mv) continue
+      const a = d.mv.a + 0.25, ends = [-a, a].map(o => proj(cam, { x: d.x0 + d.mv.rx * o, y: 0.02, z: d.z0 + d.mv.rz * o }))
+      if (!ends[0] || !ends[1]) continue
+      ctx.save(); ctx.lineCap = 'round'; ctx.strokeStyle = 'rgba(255,255,255,.75)'; ctx.lineWidth = Math.max(2, ends[0].s * 0.05); ctx.setLineDash([ctx.lineWidth * 2.2, ctx.lineWidth * 2.2])
+      ctx.beginPath(); ctx.moveTo(ends[0].x, ends[0].y); ctx.lineTo(ends[1].x, ends[1].y); ctx.stroke(); ctx.setLineDash([])
+      for (const [p, q] of [[ends[0], ends[1]], [ends[1], ends[0]]]) { const dx = p.x - q.x, dy = p.y - q.y, L = Math.hypot(dx, dy) || 1, ux = dx / L, uy = dy / L, h = Math.max(6, p.s * 0.18); ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x - ux * h - uy * h * 0.6, p.y - uy * h + ux * h * 0.6); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x - ux * h + uy * h * 0.6, p.y - uy * h - ux * h * 0.6); ctx.stroke() }
+      ctx.restore()
+    }
     // ディフェンダー
     m.defs.forEach((d, i) => {
       const k = HS.DEF_KIND[d.kind]
@@ -972,7 +993,8 @@
         const wob = Math.sin(vt * 2.6 + i)
         for (let k = 0; k < 3; k++) {
           const y0 = k * 1.45, fall = Math.min(1, tt * (1.6 + k * 0.35))
-          const p = { ...team, pose: k === 2 ? 'cheer' : 'hold', ph: vt * 3, seed: 40 + k, face: k === 0 ? 'grit' : k === 2 ? (near ? 'o' : 'o') : 'n', noShadow: k > 0 }
+          const walking = d.mv && k === 0 && !hit && (m.st === 'aim' || m.st === 'intro' || m.st === 'tame')
+          const p = { ...team, pose: k === 2 ? 'cheer' : walking ? 'run' : 'hold', ph: vt * 7, seed: 40 + k, face: k === 0 ? 'grit' : k === 2 ? (near ? 'o' : 'o') : 'n', noShadow: k > 0 }
           let x = d.x + R.x * wob * 0.05 * k, z = d.z + R.z * wob * 0.05 * k
           p.rot = wob * 0.035 * k; p.y0 = y0
           if (hit) { const sh = dir * k * 1.3 * fall; x += R.x * sh; z += R.z * sh; p.y0 = Math.max(0, y0 * (1 - fall * fall)); p.rot = dir * fall * (k === 0 ? 0.5 : 1.5); p.face = k === 0 ? 'cry' : 'x'; p.pose = k === 0 ? 'sad' : 'idle' }
@@ -1006,7 +1028,7 @@
         ctx.fillStyle = '#d6bb82'; if (poly(ctx, cam, c)) ctx.fill()
         ctx.fillStyle = '#8a5a2b'; ribbon(ctx, cam, [...c, c[0]].map(p => ({ x: p.x, z: p.z })), 0.16)
         // 砂山（当たると低くなる）
-        const H = 0.72 * (hit ? Math.max(0.35, 1 - tt * 3) : 1), w = 1.0
+        const H = 0.72 * (hit ? Math.max(0.35, 1 - tt * 3) : 1), w = d.w || 1.0
         const top = [], bot = []
         for (let k = 0; k <= 16; k++) { const s = -1 + k / 8; const q = at(s * w); top.push(proj(cam, { x: q.x, y: H * (1 - s * s), z: q.z })) }
         for (let k = 0; k <= 16; k++) { const a = Math.PI * k / 16, q = at(Math.cos(a) * w, -Math.sin(a) * w); bot.push(proj(cam, { x: q.x, y: 0, z: q.z })) }
