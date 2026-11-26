@@ -714,13 +714,14 @@
     const best = store.get('best', null); if (!best || gr.score > best) store.set('best', gr.score)
     Snd.play('whistleL', { vol: 0.8 }); setTimeout(() => Snd.play(gr.d > 0 ? 'win' : 'lose', { vol: 0.8 }), 900)
     TMe(gr.score, gr.d > 0)
-    setTimeout(() => { if (M.match !== m) return; show('end'); renderPaper(); $('paper').classList.remove('in'); void $('paper').offsetWidth; $('paper').classList.add('in') }, 1400)
+    setTimeout(() => { if (M.match !== m) return; renderPaper(); show('end'); $('paper').classList.remove('in'); void $('paper').offsetWidth; $('paper').classList.add('in') }, 1400)
     m.st = 'over'
   }
   function headline() { const r = M.result, t = T(); const hs = t.heads[r.gr.rank]; return hs[r.hi % hs.length].replace('{t}', lang === 'ja' ? '「' + r.star + '」' : '"' + r.star + '"') }
   function renderPaper() {
     const r = M.result, t = T()
     $('pMast').textContent = t.newsName
+    for (const x of document.querySelectorAll('#nextRow a')) { x.textContent = x.dataset[lang === 'ja' ? 'ja' : 'en'] }
     const d = new Date(); $('pDate').textContent = lang === 'ja' ? `${d.getMonth() + 1}月${d.getDate()}日 夕刊` : d.toDateString()
     const h = headline()
     if (lang === 'ja') { const m = h.match(/^(「[^」]+」)(.*)$/); $('pHead').innerHTML = m ? `<em>${esc(m[1])}</em>${esc(m[2])}` : esc(h) }
