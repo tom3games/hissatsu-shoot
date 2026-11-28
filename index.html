@@ -256,6 +256,16 @@ input{font-family:inherit;-webkit-user-select:text;user-select:text}
   window.addEventListener('wheel',function(e){if(e.ctrlKey)e.preventDefault()},opt);
   window.addEventListener('keydown',function(e){if((e.ctrlKey||e.metaKey)&&['+','-','=','0',';'].indexOf(e.key)>=0)e.preventDefault()});
 })();
+// 読み込み中に押されたら、すぐ「読み込み中…」と答える（game.js の読み込みを待たずに動く。2026-11-28）
+(function(){
+  var l=document.getElementById('loading'),tm=0,orig=null;if(!l)return;
+  l.addEventListener('pointerdown',function(){
+    var t=document.getElementById('loadTxt');if(!t)return;
+    var en;try{var sv=localStorage.getItem('hs_lang');en=sv?JSON.parse(sv)==='en':!/^ja/.test(navigator.language||'ja')}catch(e){en=!/^ja/.test(navigator.language||'ja')}
+    if(orig===null)orig=t.textContent;t.textContent=en?'Loading…':'読み込み中…';t.style.color='#fff';
+    clearTimeout(tm);tm=setTimeout(function(){t.textContent=orig;t.style.color='';orig=null},1100);
+  },{passive:true});
+})();
 (function(){
   var errs=[];
   window.addEventListener('error',function(e){errs.push((e.message||'error')+' @'+(e.filename||'')+':'+(e.lineno||''))});
@@ -273,7 +283,7 @@ input{font-family:inherit;-webkit-user-select:text;user-select:text}
 <script src="sfx.js?v=7"></script>
 <script src="data.js?v=7"></script>
 <script src="logic.js?v=7"></script>
-<script src="game.js?v=7"></script>
+<script src="game.js?v=8"></script>
 <script type="module" src="bots.js?v=7"></script>
 <script src="support.js?v=9" data-ja="スポーツドリンク" data-en="a sports drink"></script>
 </body>

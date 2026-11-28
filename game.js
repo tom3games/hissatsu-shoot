@@ -28,7 +28,7 @@
   Snd.setMute(store.get('mute', false))
   let sndOn = false
   function sndStart() { if (sndOn) { Snd.init(); return } sndOn = true; Snd.init(); Snd.loop('amb', 'snd/amb_crowd.mp3', 0.42) }
-  window.addEventListener('pointerdown', sndStart, { capture: true })
+  window.addEventListener('pointerdown', e => { if (e.target && e.target.closest && e.target.closest('#loading')) return; sndStart() }, { capture: true })
 
   // ---------------- 画面の大きさ
   const views = { title: $('vTitle'), edit: $('vEdit'), match: $('vMatch'), end: $('vEnd') }
